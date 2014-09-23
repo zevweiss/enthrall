@@ -178,6 +178,7 @@ static void check_remotes(void)
 {
 	direction_t dir;
 	struct remote* rmt;
+	int num_neighbors;
 
 	for_each_direction (dir)
 		mark_reachable(&config->neighbors[dir]);
@@ -185,6 +186,15 @@ static void check_remotes(void)
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		if (!rmt->reachable)
 			fprintf(stderr, "Warning: remote '%s' is not reachable\n", rmt->alias);
+
+		num_neighbors = 0;
+		for_each_direction (dir) {
+			if (rmt->neighbors[dir].type != NT_NONE)
+				num_neighbors += 1;
+		}
+
+		if (!num_neighbors)
+			fprintf(stderr, "Warning: remote '%s' has no neighbors\n", rmt->alias);
 	}
 }
 
