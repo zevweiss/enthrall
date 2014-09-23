@@ -70,6 +70,11 @@ static void switch_to_neighbor(direction_t dir)
 
 	case NT_REMOTE:
 		switch_to = n->node;
+		if (switch_to->state != CS_CONNECTED) {
+			fprintf(stderr, "remote '%s' not connected, can't switch to\n",
+			        switch_to->alias);
+			return;
+		}
 		break;
 
 	default:
