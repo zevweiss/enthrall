@@ -167,7 +167,7 @@ static void mark_reachable(struct neighbor* n)
 	rmt->reachable = 1;
 
 	if (!seen) {
-		for (dir = 0; dir < NUM_DIRECTIONS; dir++)
+		for_each_direction (dir)
 			mark_reachable(&rmt->neighbors[dir]);
 	}
 }
@@ -177,7 +177,7 @@ static void check_remotes(void)
 	direction_t dir;
 	struct remote* rmt;
 
-	for (dir = 0; dir < NUM_DIRECTIONS; dir++)
+	for_each_direction (dir)
 		mark_reachable(&config->neighbors[dir]);
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {

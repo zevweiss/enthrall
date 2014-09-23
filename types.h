@@ -38,6 +38,8 @@ typedef enum {
 	NUM_DIRECTIONS,
 } direction_t;
 
+#define for_each_direction(d) for (d = LEFT; d < NUM_DIRECTIONS; d++)
+
 typedef enum {
 	NT_NONE = 0,
 	NT_REMOTE,
