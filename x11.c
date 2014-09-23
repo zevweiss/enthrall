@@ -305,7 +305,7 @@ static int handle_event(void)
 
 	case KeyPress:
 		dir = switch_direction(&ev.xkey);
-		if (dir != -1)
+		if (dir != NO_DIR)
 			switch_to_neighbor(dir);
 		else
 			printf("XKeyPressedEvent: %d\n", ev.xkey.keycode);

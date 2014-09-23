@@ -31,6 +31,7 @@ typedef enum {
 } connstate_t;
 
 typedef enum {
+	NO_DIR = -1,
 	LEFT = 0,
 	RIGHT,
 	UP,
