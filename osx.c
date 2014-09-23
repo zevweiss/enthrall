@@ -91,6 +91,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 {
 	CGEventType cgtype;
 	CGMouseButton cgbtn;
+	int32_t scrollamt;
 	CGEventRef ev;
 
 	switch (button) {
@@ -114,12 +115,23 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		cgtype = (pr == PR_PRESS) ? kCGEventRightMouseDown : kCGEventRightMouseUp;
 		cgbtn = kCGMouseButtonRight;
 		break;
+
+	case MB_SCROLLUP:
+	case MB_SCROLLDOWN:
+		if (pr == PR_RELEASE)
+			return;
+		scrollamt = (button == MB_SCROLLDOWN) ? -1 : 1;
+		break;
+
 	default:
 		fprintf(stderr, "unhandled click event button %u\n", button);
 		return;
 	}
 
-	ev = CGEventCreateMouseEvent(NULL, cgtype, get_mousepos_cgpoint(), cgbtn);
+	if (button == MB_SCROLLUP || button == MB_SCROLLDOWN)
+		ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, scrollamt);
+	else
+		ev = CGEventCreateMouseEvent(NULL, cgtype, get_mousepos_cgpoint(), cgbtn);
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
