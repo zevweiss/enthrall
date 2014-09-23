@@ -25,6 +25,66 @@ static struct {
 
 static struct xypoint screen_center;
 
+struct hotkey {
+	KeySym sym;
+	unsigned int modmask;
+};
+
+#define SWITCHMODMASK (ControlMask|Mod1Mask|Mod4Mask)
+
+static const struct hotkey switchkeys[] = {
+	[LEFT] = { .sym = XK_a, .modmask = SWITCHMODMASK, },
+	[RIGHT] = { .sym = XK_d, .modmask = SWITCHMODMASK, },
+	[UP] = { .sym = None, .modmask = 0, },
+	[DOWN] = { .sym = None, .modmask = 0, },
+};
+
+static inline int match_hotkey(const struct hotkey* hk, const XKeyEvent* kev)
+{
+	return kev->keycode == XKeysymToKeycode(xdisp, hk->sym)
+		&& kev->state == hk->modmask;
+}
+
+static direction_t switch_direction(const XKeyEvent* kev)
+{
+	direction_t d;
+	for_each_direction (d) {
+		if (match_hotkey(&switchkeys[d], kev))
+			return d;
+	}
+	return -1;
+}
+
+static void switch_to_neighbor(direction_t dir)
+{
+	struct remote* switch_to = active_remote;
+	struct neighbor* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+
+	switch (n->type) {
+	case NT_NONE:
+		return;
+
+	case NT_MASTER:
+		switch_to = NULL;
+		break;
+
+	case NT_REMOTE:
+		switch_to = n->node;
+		break;
+
+	default:
+		fprintf(stderr, "unexpected neighbor type %d\n", n->type);
+		return;
+	}
+
+	if (active_remote && !switch_to)
+		ungrab_inputs();
+	else if (!active_remote && switch_to)
+		grab_inputs();
+
+	active_remote = switch_to;
+}
+
 static unsigned int get_mod_mask(KeySym modsym)
 {
 	static const unsigned int modifier_masks[] = {
@@ -105,9 +165,10 @@ int platform_init(void)
 
 	/* Grab hotkeys */
 	XUngrabKey(xdisp, AnyKey, AnyModifier, xrootwin);
-	grab_key_by_sym(XK_a, ControlMask|Mod1Mask|Mod4Mask, 1);
+	grab_key_by_sym(XK_a, ControlMask|Mod1Mask|Mod4Mask, 0);
+	grab_key_by_sym(XK_d, ControlMask|Mod1Mask|Mod4Mask, 1);
 
-	return 0;
+	return XConnectionNumber(xdisp);
 }
 
 void platform_exit(void)
@@ -217,6 +278,7 @@ static int handle_event(void)
 {
 	XEvent ev;
 	struct message msg;
+	direction_t dir;
 	int status = 1;
 
 	XNextEvent(xdisp, &ev);
@@ -242,7 +304,11 @@ static int handle_event(void)
 		break;
 
 	case KeyPress:
-		printf("XKeyPressedEvent: %d\n", ev.xkey.keycode);
+		dir = switch_direction(&ev.xkey);
+		if (dir != -1)
+			switch_to_neighbor(dir);
+		else
+			printf("XKeyPressedEvent: %d\n", ev.xkey.keycode);
 		break;
 
 	case KeyRelease:
@@ -290,3 +356,8 @@ int remote_mode(void)
 	return 0;
 }
 
+void process_events(void)
+{
+	while (XPending(xdisp))
+		handle_event();
+}

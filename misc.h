@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "types.h"
+
 #define ARR_LEN(a) (sizeof(a) / sizeof(a[0]))
 
 #define LOOKUP(key, table) (assert(key < ARR_LEN(table)), table[key])
@@ -33,5 +35,7 @@ static inline void xfree(void* p)
 {
 	free(p);
 }
+
+extern struct config* config;
 
 #endif /* MISC_H */

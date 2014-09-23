@@ -18,6 +18,8 @@ void ungrab_inputs(void);
 
 int remote_mode(void);
 
+void process_events(void);
+
 int platform_init(void);
 void platform_exit(void);
 

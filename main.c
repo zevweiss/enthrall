@@ -23,6 +23,8 @@ struct remote* active_remote = NULL;
 
 char* default_remote_command;
 
+static int platform_event_fd;
+
 static void handle_message(void)
 {
 	struct message msg;
@@ -268,51 +270,6 @@ static void handle_ready(struct remote* rmt)
 	fprintf(stderr, "Remote %s becomes ready...\n", rmt->alias);
 }
 
-static void handle_command(void)
-{
-	char cmdbuf[256];
-	char namebuf[256];
-	struct message msg;
-	struct remote* rmt;
-
-	fgets(cmdbuf, sizeof(cmdbuf), stdin);
-
-	if (sscanf(cmdbuf, "s %256s\n", namebuf) == 1) {
-		if ((rmt = find_remote(namebuf))) {
-			active_remote = rmt;
-			printf("selected %s as active remote, entering remote mode...\n", namebuf);
-			remote_mode();
-		} else {
-			fprintf(stderr, "unknown remote: %s\n", namebuf);
-		}
-	} else if (sscanf(cmdbuf, "r %256s\n", namebuf) == 1) {
-		if ((rmt = find_remote(namebuf)))
-			setup_remote(rmt);
-		else
-			fprintf(stderr, "unknown remote: %s\n", namebuf);
-	} else if (sscanf(cmdbuf, "m %d %d\n", &msg.moverel.dx, &msg.moverel.dy) == 2) {
-		msg.type = MT_MOVEREL;
-		if (!active_remote)
-			fprintf(stderr, "no remote selected\n");
-		else if (send_message(active_remote->send_fd, &msg))
-			TODO();
-		else
-			printf("sent MOVEREL(%d, %d)\n", msg.moverel.dx, msg.moverel.dy);
-	} else if (!strcmp(cmdbuf, "q\n")) {
-		msg.type = MT_SHUTDOWN;
-		if (!active_remote)
-			fprintf(stderr, "no remote selected\n");
-		else if (send_message(active_remote->send_fd, &msg))
-			TODO();
-		else {
-			printf("sent SHUTDOWN\n");
-			disconnect_remote(active_remote, CS_DISCONNECTED);
-		}
-	} else {
-		fprintf(stderr, "unrecognized command: %s\n", cmdbuf);
-	}
-}
-
 static inline void fdset_add(int fd, fd_set* set, int* nfds)
 {
 	FD_SET(fd, set);
@@ -340,7 +297,7 @@ static void handle_fds(void)
 		}
 	}
 
-	fdset_add(STDIN_FILENO, &rfds, &nfds);
+	fdset_add(platform_event_fd, &rfds, &nfds);
 
 	status = select(nfds, &rfds, &wfds, NULL, NULL);
 	if (status < 0) {
@@ -360,8 +317,8 @@ static void handle_fds(void)
 		}
 	}
 
-	if (FD_ISSET(STDIN_FILENO, &rfds))
-		handle_command();
+	if (FD_ISSET(platform_event_fd, &rfds))
+		process_events();
 }
 
 int main(int argc, char** argv)
@@ -387,7 +344,11 @@ int main(int argc, char** argv)
 	argc -= optind;
 	argv += optind;
 
-	platform_init();
+	platform_event_fd = platform_init();
+	if (platform_event_fd < 0) {
+		fprintf(stderr, "platform_init failed\n");
+		exit(1);
+	}
 
 	if (!argc)
 		server_mode();
