@@ -72,9 +72,10 @@ static void server_mode(void)
 
 static void exec_remote_shell(const struct remote* rmt)
 {
+	char* remote_shell = config->remote_shell ? config->remote_shell : "ssh";
 	char portbuf[32];
 	char* argv[] = {
-		config->remote_shell,
+		remote_shell,
 		"-oPasswordAuthentication=no",
 		"-oNumberOfPasswordPrompts=0",
 
@@ -114,7 +115,7 @@ static void exec_remote_shell(const struct remote* rmt)
 
 	assert(nargs < ARR_LEN(argv));
 
-	execvp(config->remote_shell, argv);
+	execvp(remote_shell, argv);
 	perror("execvp");
 	exit(1);
 }
