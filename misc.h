@@ -9,7 +9,9 @@
 
 #define ARR_LEN(a) (sizeof(a) / sizeof(a[0]))
 
-#define LOOKUP(key, table) (assert(key < ARR_LEN(table)), table[key])
+#define LOOKUP(key, table) (assert(key < ARR_LEN(table)), \
+                            assert(key >= 0), \
+                            table[key])
 
 static inline void* xmalloc(size_t s)
 {
