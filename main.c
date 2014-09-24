@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <sys/fcntl.h>
+#include <sys/socket.h>
 
 #include "types.h"
 #include "misc.h"
@@ -200,10 +201,10 @@ static void check_remotes(void)
 
 static void setup_remote(struct remote* rmt)
 {
-	int send_pipe[2], recv_pipe[2];
+	int sockfds[2];
 
-	if (pipe(send_pipe) || pipe(recv_pipe)) {
-		perror("pipe");
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfds)) {
+		perror("socketpair");
 		exit(1);
 	}
 
@@ -217,21 +218,20 @@ static void setup_remote(struct remote* rmt)
 
 	if (!rmt->sshpid) {
 		/* ssh child */
-		if (dup2(send_pipe[0], STDIN_FILENO) < 0
-		    || dup2(recv_pipe[1], STDOUT_FILENO) < 0) {
+		if (dup2(sockfds[1], STDIN_FILENO) < 0
+		    || dup2(sockfds[1], STDOUT_FILENO) < 0) {
 			perror("dup2");
 			exit(1);
 		}
 
-		if (close(send_pipe[1]) || close(recv_pipe[0]))
+		if (close(sockfds[0]))
 			perror("close");
 
 		exec_remote_shell(rmt);
 	} else {
-		rmt->send_fd = send_pipe[1];
-		rmt->recv_fd = recv_pipe[0];
+		rmt->sock = sockfds[0];
 
-		if (close(send_pipe[0]) || close(recv_pipe[1]))
+		if (close(sockfds[1]))
 			perror("close");
 	}
 }
@@ -244,11 +244,8 @@ static void disconnect_remote(struct remote* rmt, connstate_t state)
 	if (state == CS_FAILED)
 		fprintf(stderr, "disconnecting failed remote '%s'\n", rmt->alias);
 
-	close(rmt->recv_fd);
-	rmt->recv_fd = -1;
-
-	close(rmt->send_fd);
-	rmt->send_fd = -1;
+	close(rmt->sock);
+	rmt->sock = -1;
 
 	if (rmt->sshpid > 0 && kill(rmt->sshpid, SIGTERM) && errno != ESRCH)
 		perror("failed to kill ssh");
@@ -265,7 +262,7 @@ static void disconnect_remote(struct remote* rmt, connstate_t state)
 static void handle_ready(struct remote* rmt)
 {
 	struct message msg;
-	if (receive_message(rmt->recv_fd, &msg)) {
+	if (receive_message(rmt->sock, &msg)) {
 		disconnect_remote(rmt, CS_FAILED);
 		return;
 	}
@@ -299,7 +296,7 @@ static void handle_fds(void)
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		switch (rmt->state) {
 		case CS_SETTINGUP:
-			fdset_add(rmt->recv_fd, &rfds, &nfds);
+			fdset_add(rmt->sock, &rfds, &nfds);
 			break;
 
 		default:
@@ -318,7 +315,7 @@ static void handle_fds(void)
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		switch (rmt->state) {
 		case CS_SETTINGUP:
-			if (FD_ISSET(rmt->recv_fd, &rfds))
+			if (FD_ISSET(rmt->sock, &rfds))
 				handle_ready(rmt);
 			break;
 

@@ -76,7 +76,7 @@ struct remote {
 	/* connection state */
 	connstate_t state;
 	pid_t sshpid;
-	int send_fd, recv_fd;
+	int sock;
 
 	struct remote* next;
 };

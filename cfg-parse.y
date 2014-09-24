@@ -42,7 +42,7 @@ static struct remote* new_uninit_remote(void)
 {
 	struct remote* rmt = xcalloc(sizeof(*rmt));
 
-	rmt->send_fd = rmt->recv_fd = rmt->sshpid = -1;
+	rmt->sock = rmt->sshpid = -1;
 	rmt->state = CS_NEW;
 
 	return rmt;
