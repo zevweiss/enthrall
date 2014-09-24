@@ -230,12 +230,6 @@ void ungrab_inputs(void)
 	fprintf(stderr, "ungrab_inputs() NYI on OSX\n");
 }
 
-int remote_mode(void)
-{
-	fprintf(stderr, "remote_mode() NYI on OSX\n");
-	return -1;
-}
-
 void process_events(void)
 {
 	fprintf(stderr, "process_events() NYI on OSX\n");

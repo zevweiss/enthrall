@@ -344,23 +344,6 @@ static int handle_event(void)
 	return status;
 }
 
-int remote_mode(void)
-{
-	int status;
-
-	last_seen_mousepos = get_mousepos();
-
-	status = grab_inputs();
-	if (status)
-		return status;
-
-	while (handle_event());
-
-	ungrab_inputs();
-
-	return 0;
-}
-
 void process_events(void)
 {
 	while (XPending(xdisp))

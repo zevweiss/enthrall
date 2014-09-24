@@ -19,8 +19,6 @@ void ungrab_inputs(void);
 char* get_clipboard_text(void);
 int set_clipboard_text(const char* text);
 
-int remote_mode(void);
-
 void process_events(void);
 
 int platform_init(void);
