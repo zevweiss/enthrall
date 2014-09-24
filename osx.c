@@ -4,6 +4,12 @@
 
 #include <CoreGraphics/CGEvent.h>
 
+/*
+ * Because unfortunately I can't currently figure out how to get just
+ * Pasteboard.h (which is in HIServices within ApplicationServices).  Sigh.
+ */
+#include <Carbon/Carbon.h>
+
 #include "types.h"
 #include "proto.h"
 #include "platform.h"
@@ -14,14 +20,31 @@
 #define cground lroundf
 #endif
 
+
+/*
+ * Best reference I can find:
+ * http://uti.schwa.io/identifier/com.apple.traditional-mac-plain-text
+ */
+#define PLAINTEXT CFSTR("com.apple.traditional-mac-plain-text")
+
+static PasteboardRef clipboard;
+
 int platform_init(void)
 {
+	OSStatus status;
+
+	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
+	if (status != noErr) {
+		fprintf(stderr, "PasteboardCreate() failed\n");
+		return -1;
+	}
+
 	return 0;
 }
 
 void platform_exit(void)
 {
-	return;
+	CFRelease(clipboard);
 }
 
 static inline uint32_t cgfloat_to_u32(CGFloat f)
@@ -138,6 +161,62 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 	}
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
+}
+
+char* get_clipboard_text(void)
+{
+	OSStatus status;
+	PasteboardItemID itemid;
+	CFDataRef data;
+	char* txt;
+	size_t len;
+
+	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
+	if (status != noErr) {
+		fprintf(stderr, "PasteboardGetItemIdentifier(1) failed\n");
+		return NULL;
+	}
+
+	status = PasteboardCopyItemFlavorData(clipboard, itemid, PLAINTEXT, &data);
+	if (status != noErr) {
+		fprintf(stderr, "PasteboardCopyItemFlavorData(PLAINTEXT) failed\n");
+		return NULL;
+	}
+
+	len = CFDataGetLength(data);
+	txt = malloc(len+1);
+	memcpy(txt, CFDataGetBytePtr(data), len);
+	txt[len] = '\0';
+
+	CFRelease(data);
+
+	return txt;
+}
+
+int set_clipboard_text(const char* text)
+{
+	OSStatus status;
+	CFDataRef data;
+	int ret = 0;
+
+	data = CFDataCreate(NULL, (UInt8*)text, strlen(text));
+	if (!data) {
+		fprintf(stderr, "CFDataCreate() failed\n");
+		return -1;
+	}
+
+	/* PasteboardClear() here?  Doesn't seem like it *should* be necessary... */
+
+	status = PasteboardPutItemFlavor(clipboard, (PasteboardItemID)data,
+	                                 PLAINTEXT, data, 0);
+	if (status != noErr) {
+		fprintf(stderr, "PasteboardPutItemFlavor() failed\n");
+		ret = -1;
+	}
+
+	CFRelease(data);
+
+	return ret;
 }
 
 int grab_inputs(void)

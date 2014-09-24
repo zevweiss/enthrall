@@ -16,6 +16,9 @@ void do_clickevent(mousebutton_t button, pressrel_t pressrel);
 int grab_inputs(void);
 void ungrab_inputs(void);
 
+char* get_clipboard_text(void);
+int set_clipboard_text(const char* text);
+
 int remote_mode(void);
 
 void process_events(void);
