@@ -55,6 +55,8 @@ static direction_t switch_direction(const XKeyEvent* kev)
 	return -1;
 }
 
+static struct xypoint saved_master_mousepos;
+
 static void switch_to_neighbor(direction_t dir)
 {
 	struct remote* switch_to = active_remote;
@@ -82,10 +84,13 @@ static void switch_to_neighbor(direction_t dir)
 		return;
 	}
 
-	if (active_remote && !switch_to)
+	if (active_remote && !switch_to) {
 		ungrab_inputs();
-	else if (!active_remote && switch_to)
+		set_mousepos(saved_master_mousepos);
+	} else if (!active_remote && switch_to) {
+		saved_master_mousepos = get_mousepos();
 		grab_inputs();
+	}
 
 	active_remote = switch_to;
 }
