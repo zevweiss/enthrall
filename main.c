@@ -28,7 +28,9 @@ static int platform_event_fd;
 
 static void handle_message(void)
 {
-	struct message msg;
+	struct message msg, resp;
+	size_t cliplen;
+	char* cliptext;
 
 	if (receive_message(STDIN_FILENO, &msg))
 		TODO();
@@ -45,6 +47,29 @@ static void handle_message(void)
 
 	case MT_CLICKEVENT:
 		do_clickevent(msg.clickevent.button, msg.clickevent.pressrel);
+		break;
+
+	case MT_GETCLIPBOARD:
+		cliptext = get_clipboard_text();
+		cliplen = strlen(cliptext);
+
+		/* Cap length at UINT32_MAX (size_t may be larger) */
+		cliplen = cliplen > UINT32_MAX ? UINT32_MAX : cliplen;
+
+		resp.type = MT_SETCLIPBOARD;
+		resp.setclipboard.length = cliplen;
+		send_message(STDOUT_FILENO, &resp);
+		write_all(STDOUT_FILENO, cliptext, cliplen);
+
+		xfree(cliptext);
+		break;
+
+	case MT_SETCLIPBOARD:
+		cliptext = xmalloc(msg.setclipboard.length + 1);
+		read_all(STDIN_FILENO, cliptext, msg.setclipboard.length);
+		cliptext[msg.setclipboard.length] = '\0';
+		set_clipboard_text(cliptext);
+		xfree(cliptext);
 		break;
 
 	default:
