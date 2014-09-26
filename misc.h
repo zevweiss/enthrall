@@ -39,6 +39,7 @@ static inline void xfree(void* p)
 }
 
 extern struct config* config;
+extern struct remote* active_remote;
 
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);

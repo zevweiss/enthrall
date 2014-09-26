@@ -12,8 +12,6 @@
 
 #include "proto.h"
 
-extern struct remote* active_remote;
-
 static Display* xdisp;
 static Window xrootwin;
 static Pixmap cursor_pixmap;
