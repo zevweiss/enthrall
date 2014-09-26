@@ -12,6 +12,8 @@ static const size_t payload_sizes[] = {
 	[MT_SHUTDOWN] = 0,
 	[MT_MOVEREL] = 2 * sizeof(int32_t),
 	[MT_CLICKEVENT] = 2 * sizeof(uint32_t),
+	[MT_GETCLIPBOARD] = 0,
+	[MT_SETCLIPBOARD] = sizeof(uint32_t),
 };
 
 static size_t message_flatsize(const struct message* msg)
@@ -66,11 +68,31 @@ static void unflatten_clickevent(const void* buf, struct message* msg)
 	msg->clickevent.pressrel = ntohl(u32b[1]);
 }
 
+static void flatten_getclipboard(const struct message* msg, void* buf)
+{
+}
+
+static void unflatten_getclipboard(const void* buf, struct message* msg)
+{
+}
+
+static void flatten_setclipboard(const struct message* msg, void* buf)
+{
+	*(uint32_t*)buf = htonl(msg->setclipboard.length);
+}
+
+static void unflatten_setclipboard(const void* buf, struct message* msg)
+{
+	msg->setclipboard.length = ntohl(*(uint32_t*)buf);
+}
+
 static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_READY] = flatten_ready,
 	[MT_SHUTDOWN] = flatten_shutdown,
 	[MT_MOVEREL] = flatten_moverel,
 	[MT_CLICKEVENT] = flatten_clickevent,
+	[MT_GETCLIPBOARD] = flatten_getclipboard,
+	[MT_SETCLIPBOARD] = flatten_setclipboard,
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
@@ -78,6 +100,8 @@ static void (*const unflatteners[])(const void*, struct message*) = {
 	[MT_SHUTDOWN] = unflatten_shutdown,
 	[MT_MOVEREL] = unflatten_moverel,
 	[MT_CLICKEVENT] = unflatten_clickevent,
+	[MT_GETCLIPBOARD] = unflatten_getclipboard,
+	[MT_SETCLIPBOARD] = unflatten_setclipboard,
 };
 
 static void flatten_message(const struct message* msg, void* buf)

@@ -11,6 +11,8 @@ enum {
 	MT_SHUTDOWN,
 	MT_MOVEREL,
 	MT_CLICKEVENT,
+	MT_GETCLIPBOARD,
+	MT_SETCLIPBOARD,
 };
 
 typedef uint32_t msgtype_t;
@@ -32,6 +34,14 @@ struct clickevent_msg {
 	uint32_t pressrel;
 };
 
+struct getclipboard_msg {
+};
+
+struct setclipboard_msg {
+	uint32_t length;
+	/* message is followed by a 'length'-byte payload */
+};
+
 struct message {
 	msgtype_t type;
 	union {
@@ -39,6 +49,8 @@ struct message {
 		struct shutdown_msg shutdown;
 		struct moverel_msg moverel;
 		struct clickevent_msg clickevent;
+		struct getclipboard_msg getclipboard;
+		struct setclipboard_msg setclipboard;
 	};
 };
 
