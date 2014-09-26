@@ -35,7 +35,7 @@ int platform_init(void)
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardCreate() failed\n");
+		fprintf(stderr, "PasteboardCreate() failed (%d)\n", status);
 		return -1;
 	}
 
@@ -173,13 +173,13 @@ char* get_clipboard_text(void)
 
 	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardGetItemIdentifier(1) failed\n");
+		fprintf(stderr, "PasteboardGetItemIdentifier(1) failed (%d)\n", status);
 		return NULL;
 	}
 
 	status = PasteboardCopyItemFlavorData(clipboard, itemid, PLAINTEXT, &data);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardCopyItemFlavorData(PLAINTEXT) failed\n");
+		fprintf(stderr, "PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
 		return NULL;
 	}
 
@@ -210,7 +210,7 @@ int set_clipboard_text(const char* text)
 	status = PasteboardPutItemFlavor(clipboard, (PasteboardItemID)data,
 	                                 PLAINTEXT, data, 0);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardPutItemFlavor() failed\n");
+		fprintf(stderr, "PasteboardPutItemFlavor() failed (%d)\n", status);
 		ret = -1;
 	}
 
