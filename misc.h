@@ -40,4 +40,7 @@ static inline void xfree(void* p)
 
 extern struct config* config;
 
+int read_all(int fd, void* buf, size_t len);
+int write_all(int fd, const void* buf, size_t len);
+
 #endif /* MISC_H */
