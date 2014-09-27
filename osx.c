@@ -189,10 +189,13 @@ void move_mousepos(int32_t dx, int32_t dy)
  */
 #define DBLCLICK_THRESH_US 250000
 
-static struct {
-	uint64_t last_clickevent;
+struct click_history {
+	uint64_t last_press;
+	uint64_t last_release;
 	int count;
-} click_history[NUM_MOUSEBUTTONS];
+};
+
+static struct click_history click_histories[NUM_MOUSEBUTTONS];
 
 /*
  * 1: single-click, 2: double-click, 3: triple-click.
@@ -204,7 +207,8 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 {
 	int64_t type;
 	uint64_t now_us = get_microtime();
-	int* count = &click_history[btn].count;
+	struct click_history* hist = &click_histories[btn];
+	uint64_t* prev = (pr == PR_PRESS) ? &hist->last_press : &hist->last_release;
 
 	/*
 	 * This may look sort of weird, but it's my best approximation of what
@@ -212,17 +216,17 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 	 * clicks (at least for now).
 	 */
 
-	if ((now_us - click_history[btn].last_clickevent) > DBLCLICK_THRESH_US) {
-		*count = 1;
+	if ((now_us - *prev) > DBLCLICK_THRESH_US) {
+		hist->count = 1;
 		type = 1;
 	} else if (pr == PR_PRESS) {
-		(*count)++;
-		type = *count > 3 ? 2 : *count;
+		hist->count++;
+		type = hist->count > 3 ? 2 : hist->count;
 	} else {
-		type = *count;
+		type = hist->count;
 	}
 
-	click_history[btn].last_clickevent = now_us;
+	*prev = now_us;
 
 	return type;
 }
