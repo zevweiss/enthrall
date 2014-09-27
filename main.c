@@ -90,6 +90,8 @@ static void server_mode(void)
 	    || dup2(errfd, STDERR_FILENO) < 0
 	    || !(stderr = fdopen(errfd, "w")))
 		abort();
+	if (setvbuf(stderr, NULL, _IONBF, 0))
+		abort();
 
 	if (send_message(STDOUT_FILENO, &readymsg))
 		TODO();
