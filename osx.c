@@ -170,6 +170,14 @@ char* get_clipboard_text(void)
 	char* txt;
 	size_t len;
 
+	/*
+	 * To avoid error -25130 (badPasteboardSyncErr):
+	 *
+	 * "The pasteboard has been modified and must be synchronized before
+	 *  use."
+	 */
+	PasteboardSynchronize(clipboard);
+
 	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
 	if (status != noErr) {
 		fprintf(stderr, "PasteboardGetItemIdentifier(1) failed (%d)\n", status);
@@ -204,7 +212,13 @@ int set_clipboard_text(const char* text)
 		return -1;
 	}
 
-	/* PasteboardClear() here?  Doesn't seem like it *should* be necessary... */
+	/*
+	 * To avoid error -25135 (notPasteboardOwnerErr):
+	 *
+	 * "The application did not clear the pasteboard before attempting to
+	 *  add flavor data."
+	 */
+	PasteboardClear(clipboard);
 
 	status = PasteboardPutItemFlavor(clipboard, (PasteboardItemID)data,
 	                                 PLAINTEXT, data, 0);
