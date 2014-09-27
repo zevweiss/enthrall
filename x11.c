@@ -14,8 +14,18 @@
 
 static Display* xdisp;
 static Window xrootwin;
+static Window xwin;
 static Pixmap cursor_pixmap;
 static Cursor xcursor_blank;
+
+static Atom et_selection_data;
+static Atom utf8_string_atom;
+
+static Time last_xevent_time;
+
+#define ET_XSELECTION XA_PRIMARY
+static char* clipboard_text;
+static Time xselection_owned_since;
 
 static struct {
 	int32_t x, y;
@@ -186,6 +196,7 @@ int platform_init(void)
 {
 	char bitmap[1] = { 0, };
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
+	unsigned long blackpx;
 
 	xdisp = XOpenDisplay(NULL);
 	if (!xdisp) {
@@ -200,6 +211,12 @@ int platform_init(void)
 	screen_center.y = screen_dimensions.y / 2;
 
 	xrootwin = XDefaultRootWindow(xdisp);
+
+	blackpx = BlackPixel(xdisp, XDefaultScreen(xdisp));
+	xwin = XCreateSimpleWindow(xdisp, xrootwin, 0, 0, 1, 1, 0, blackpx, blackpx);
+
+	et_selection_data = XInternAtom(xdisp, "ET_SELECTION_DATA", False);
+	utf8_string_atom = XInternAtom(xdisp, "UTF8_STRING", False);
 
 	/* Create the blank cursor used when grabbing input */
 	cursor_pixmap = XCreatePixmapFromBitmapData(xdisp, xrootwin, bitmap, 1, 1, 0, 0, 1);
@@ -218,6 +235,7 @@ void platform_exit(void)
 {
 	XFreeCursor(xdisp, xcursor_blank);
 	XFreePixmap(xdisp, cursor_pixmap);
+	XDestroyWindow(xdisp, xwin);
 	XCloseDisplay(xdisp);
 }
 
@@ -317,6 +335,163 @@ static const mousebutton_t pi_mousebuttons[] = {
 	[Button5] = MB_SCROLLDOWN,
 };
 
+static void get_xevent(XEvent* e)
+{
+	XNextEvent(xdisp, e);
+
+	/* This is kind of gross... */
+
+#define GETTIME(type, structname)                                       \
+	case type: last_xevent_time = e->x##structname.time; break
+
+	switch (e->type) {
+		GETTIME(KeyPress, key);
+		GETTIME(KeyRelease, key);
+		GETTIME(ButtonPress, button);
+		GETTIME(ButtonRelease, button);
+		GETTIME(MotionNotify, motion);
+		GETTIME(PropertyNotify, property);
+		GETTIME(SelectionClear, selectionclear);
+		GETTIME(SelectionRequest, selectionrequest);
+		GETTIME(SelectionNotify, selection);
+#undef GETTIME
+	default: break;
+	}
+}
+
+char* get_clipboard_text(void)
+{
+	XEvent ev;
+	Atom proptype;
+	int propformat;
+	unsigned long nitems, bytes_remaining;
+	unsigned char* prop;
+	char* text;
+
+	/*
+	 * If we (think we) own the selection, just go ahead and use it
+	 * without going through all the X crap.
+	 */
+	if (xselection_owned_since != 0 && clipboard_text)
+		return xstrdup(clipboard_text);
+
+	/* FIXME: delete et_selection_data from xwin before requestion conversion */
+	XConvertSelection(xdisp, ET_XSELECTION, XA_STRING, et_selection_data,
+	                  xwin, last_xevent_time);
+	XFlush(xdisp);
+
+	for (;;) {
+		get_xevent(&ev);
+		if (ev.type != SelectionNotify) {
+			fprintf(stderr, "dropping type %d event while awaiting selection...\n",
+			        ev.type);
+			continue;
+		}
+
+		if (ev.xselection.property == None)
+			return xstrdup("");
+
+		if (ev.xselection.selection != ET_XSELECTION)
+			fprintf(stderr, "unexpected selection in SelectionNotify event\n");
+		if (ev.xselection.property != et_selection_data)
+			fprintf(stderr, "unexpected property in SelectionNotify event\n");
+		if (ev.xselection.requestor != xwin)
+			fprintf(stderr, "unexpected requestor in SelectionNotify event\n");
+		if (ev.xselection.target != XA_STRING)
+			fprintf(stderr, "unexpected target in SelectionNotify event\n");
+
+		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
+		                   ev.xselection.property, 0, (1L << 24), True,
+		                   AnyPropertyType, &proptype, &propformat, &nitems,
+		                   &bytes_remaining, &prop);
+
+		if (proptype != XA_STRING && proptype != utf8_string_atom)
+			fprintf(stderr, "selection window property has unexpected type\n");
+		if (bytes_remaining)
+			fprintf(stderr, "%lu bytes remaining of selection window property\n",
+			        bytes_remaining);
+		if (propformat != 8) {
+			fprintf(stderr, "selection window property has unexpected format (%d)\n",
+			        propformat);
+			return xstrdup("");
+		}
+
+		text = xmalloc(nitems + 1);
+		memcpy(text, prop, nitems);
+		text[nitems] = '\0';
+
+		XFree(prop);
+		return text;
+	}
+
+	return NULL;
+}
+
+int set_clipboard_text(const char* text)
+{
+	xfree(clipboard_text);
+	clipboard_text = xstrdup(text);
+
+	XSetSelectionOwner(xdisp, ET_XSELECTION, xwin, last_xevent_time);
+
+	if (XGetSelectionOwner(xdisp, ET_XSELECTION) != xwin) {
+		fprintf(stderr, "failed to take ownership of X selection\n");
+		return -1;
+	}
+
+	xselection_owned_since = last_xevent_time;
+
+	return 0;
+}
+
+static Status send_selection_notify(const XSelectionRequestEvent* req, Atom property)
+{
+	XEvent ev;
+	XSelectionEvent* resp = &ev.xselection;
+
+	resp->type = SelectionNotify;
+	resp->display = req->display;
+	resp->requestor = req->requestor;
+	resp->selection = req->selection;
+	resp->target = req->target;
+	resp->property = property;
+	resp->time = req->time;
+
+	return XSendEvent(xdisp, req->requestor, False, 0, &ev);
+}
+
+static void handle_selection_request(const XSelectionRequestEvent* req)
+{
+	Atom property;
+
+	if (!clipboard_text
+	    || (req->time != CurrentTime && req->time < xselection_owned_since)
+	    || req->selection != ET_XSELECTION || req->owner != xwin) {
+		property = None;
+	} else if (req->target != XA_STRING) {
+		property = None;
+	} else {
+		/*
+		 * ICCCM sec. 2.2:
+		 *
+		 * "If the specified property is None , the requestor is an obsolete
+		 *  client. Owners are encouraged to support these clients by using
+		 *  the specified target atom as the property name to be used for the
+		 *  reply."
+		 */
+		property = (req->property == None) ? req->target : req->property;
+
+		/* Send the requested data back to the requesting window */
+		XChangeProperty(xdisp, req->requestor, property, req->target, 8,
+		                PropModeReplace, (unsigned char*)clipboard_text,
+		                strlen(clipboard_text));
+	}
+
+	/* Acknowledge that the transfer has been made (or failed) */
+	if (!send_selection_notify(req, property))
+		fprintf(stderr, "Failed to send SelectionNotify to requestor\n");
+}
+
 static void handle_event(const XEvent* ev)
 {
 	struct message msg;
@@ -368,6 +543,24 @@ static void handle_event(const XEvent* ev)
 		send_message(active_remote->sock, &msg);
 		break;
 
+	case SelectionRequest:
+		handle_selection_request(&ev->xselectionrequest);
+		break;
+
+	case SelectionClear:
+		if (ev->xselectionclear.window == xwin
+		    && ev->xselectionclear.selection == ET_XSELECTION) {
+			xfree(clipboard_text);
+			clipboard_text = NULL;
+			xselection_owned_since = 0;
+			fprintf(stderr, "(selection cleared)\n");
+		}
+		break;
+
+	case SelectionNotify:
+		fprintf(stderr, "unexpected SelectionNotify event\n");
+		break;
+
 	default:
 		printf("Unknown XEvent type: %d\n", ev->type);
 		break;
@@ -379,7 +572,7 @@ void process_events(void)
 	XEvent ev;
 
 	while (XPending(xdisp)) {
-		XNextEvent(xdisp, &ev);
+		get_xevent(&ev);
 		handle_event(&ev);
 	}
 }
