@@ -134,6 +134,9 @@ static void switch_to_neighbor(direction_t dir)
 		grab_inputs();
 	}
 
+	if (switch_to)
+		set_mousepos(screen_center);
+
 	transfer_clipboard(active_remote, switch_to);
 
 	active_remote = switch_to;
@@ -519,8 +522,8 @@ static void handle_event(const XEvent* ev)
 		msg.moverel.dy = ev->xmotion.y_root - last_seen_mousepos.y;
 		send_message(active_remote->sock, &msg);
 
-		if (abs(ev->xmotion.x_root - screen_center.x) > 100
-		    || abs(ev->xmotion.y_root - screen_center.y) > 100) {
+		if (abs(ev->xmotion.x_root - screen_center.x) > 1
+		    || abs(ev->xmotion.y_root - screen_center.y) > 1) {
 			set_mousepos(screen_center);
 			last_seen_mousepos = screen_center;
 		} else {
