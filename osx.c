@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <math.h>
 
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+
 #include <CoreGraphics/CGEvent.h>
 #include <CoreGraphics/CGDirectDisplay.h>
 
@@ -32,6 +35,8 @@ static PasteboardRef clipboard;
 
 static struct rectangle screenbounds;
 
+static mach_timebase_info_data_t mach_timebase;
+
 int platform_init(void)
 {
 	CGError cgerr;
@@ -39,6 +44,14 @@ int platform_init(void)
 	CGDirectDisplayID active_displays[16];
 	CGRect bounds;
 	uint32_t num_active_displays;
+	kern_return_t kr;
+
+	kr = mach_timebase_info(&mach_timebase);
+	if (kr != KERN_SUCCESS) {
+		fprintf(stderr, "mach_timebase_info() failed: %s\n",
+		        mach_error_string(kr));
+		return -1;
+	}
 
 	cgerr = CGGetActiveDisplayList(ARR_LEN(active_displays), active_displays,
 	                               &num_active_displays);
@@ -71,6 +84,12 @@ int platform_init(void)
 void platform_exit(void)
 {
 	CFRelease(clipboard);
+}
+
+uint64_t get_microtime(void)
+{
+	uint64_t t = mach_absolute_time();
+	return ((t * mach_timebase.numer) / mach_timebase.denom) / 1000;
 }
 
 static inline uint32_t cgfloat_to_u32(CGFloat f)

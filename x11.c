@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -237,6 +238,16 @@ void platform_exit(void)
 	XFreePixmap(xdisp, cursor_pixmap);
 	XDestroyWindow(xdisp, xwin);
 	XCloseDisplay(xdisp);
+}
+
+uint64_t get_microtime(void)
+{
+	struct timespec ts;
+	if (clock_gettime(CLOCK_MONOTONIC_RAW, &ts)) {
+		perror("clock_gettime");
+		abort();
+	}
+	return (ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
 }
 
 struct xypoint get_mousepos(void)

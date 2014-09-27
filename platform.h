@@ -7,6 +7,15 @@
 
 #include "types.h"
 
+/*
+ * gettimeofday() is sufficiently portable, but sadly non-monotonic.
+ * clock_gettime() is monotonic (or at least can be), but sadly does not exist
+ * on OSX, despite being in POSIX.1-2001.  So instead we have this, a
+ * platform-specific microsecond-resolution monotonic time-since-an-epoch
+ * function.
+ */
+uint64_t get_microtime(void);
+
 struct xypoint get_mousepos(void);
 void set_mousepos(struct xypoint pos);
 void move_mousepos(int32_t dx, int32_t dy);
