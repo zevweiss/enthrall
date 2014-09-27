@@ -86,7 +86,7 @@ static void server_mode(void)
 	};
 
 	fclose(stderr);
-	if ((errfd = open("/tmp/hench.err", O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0
+	if ((errfd = open("/tmp/enthrall.err", O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0
 	    || dup2(errfd, STDERR_FILENO) < 0
 	    || !(stderr = fdopen(errfd, "w")))
 		abort();
