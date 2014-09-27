@@ -21,7 +21,7 @@ endif
 
 CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h
 
-enthrall: main.c proto.c $(PLATFORM).c misc.c proto.h misc.h platform.h $(CFGSRCS)
+enthrall: main.c proto.c $(PLATFORM).c misc.c proto.h misc.h platform.h types.h $(CFGSRCS)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^)
 
 %.yy.h: %.yy.c
