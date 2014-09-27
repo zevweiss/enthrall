@@ -9,6 +9,16 @@ struct xypoint {
 	int32_t y;
 };
 
+struct range {
+	int32_t min;
+	int32_t max;
+};
+
+struct rectangle {
+	struct range x;
+	struct range y;
+};
+
 typedef enum {
 	MB_LEFT = 1,
 	MB_RIGHT,

@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include <CoreGraphics/CGEvent.h>
+#include <CoreGraphics/CGDirectDisplay.h>
 
 /*
  * Because unfortunately I can't currently figure out how to get just
@@ -11,6 +12,7 @@
 #include <Carbon/Carbon.h>
 
 #include "types.h"
+#include "misc.h"
 #include "proto.h"
 #include "platform.h"
 
@@ -22,15 +24,40 @@
 
 /*
  * Selected from:
- *   https://developer.apple.com/Library/ios/documentation/Miscellaneous/Reference/UTIRef/Articles/System-DeclaredUniformTypeIdentifiers.html
+ *   https://developer.apple.com/Library/mac/documentation/Miscellaneous/Reference/UTIRef/Articles/System-DeclaredUniformTypeIdentifiers.html
  */
 #define PLAINTEXT CFSTR("public.utf8-plain-text")
 
 static PasteboardRef clipboard;
 
+static struct rectangle screenbounds;
+
 int platform_init(void)
 {
+	CGError cgerr;
 	OSStatus status;
+	CGDirectDisplayID active_displays[16];
+	CGRect bounds;
+	uint32_t num_active_displays;
+
+	cgerr = CGGetActiveDisplayList(ARR_LEN(active_displays), active_displays,
+	                               &num_active_displays);
+	if (cgerr) {
+		fprintf(stderr, "CGGetActiveDisplayList() failed (%d)\n", cgerr);
+		return -1;
+	}
+
+	if (num_active_displays != 1) {
+		fprintf(stderr, "Support for num_displays != 1 NYI (have %u)\n",
+		        num_active_displays);
+		return -1;
+	}
+
+	bounds = CGDisplayBounds(active_displays[0]);
+	screenbounds.x.min = CGRectGetMinX(bounds);
+	screenbounds.x.max = CGRectGetMaxX(bounds) - 1;
+	screenbounds.y.min = CGRectGetMinY(bounds);
+	screenbounds.y.max = CGRectGetMaxY(bounds) - 1;
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {
@@ -76,7 +103,15 @@ static CGPoint get_mousepos_cgpoint(void)
 
 static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button)
 {
-	CGEventRef ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
+	CGEventRef ev;
+
+	cgpt.x = (cgpt.x > screenbounds.x.max) ? screenbounds.x.max : cgpt.x;
+	cgpt.y = (cgpt.y > screenbounds.y.max) ? screenbounds.y.max : cgpt.y;
+
+	cgpt.x = (cgpt.x < screenbounds.x.min) ? screenbounds.x.min : cgpt.x;
+	cgpt.y = (cgpt.y < screenbounds.y.min) ? screenbounds.y.min : cgpt.y;
+
+	ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
