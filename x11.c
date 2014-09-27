@@ -53,6 +53,39 @@ static direction_t switch_direction(const XKeyEvent* kev)
 	return -1;
 }
 
+static void transfer_clipboard(struct remote* from, struct remote* to)
+{
+	char* cliptext;
+	struct message msg;
+
+	if (from) {
+		msg.type = MT_GETCLIPBOARD;
+		send_message(from->sock, &msg);
+		receive_message(from->sock, &msg);
+		if (msg.type != MT_SETCLIPBOARD) {
+			fprintf(stderr, "remote '%s' misbehaving, disconnecting\n",
+			        from->alias);
+			disconnect_remote(from, CS_FAILED);
+		}
+		cliptext = xmalloc(msg.setclipboard.length + 1);
+		read_all(from->sock, cliptext, msg.setclipboard.length);
+		cliptext[msg.setclipboard.length] = '\0';
+	} else {
+		cliptext = get_clipboard_text();
+		assert(strlen(cliptext) <= UINT32_MAX);
+	}
+
+	if (to) {
+		msg.type = MT_SETCLIPBOARD;
+		msg.setclipboard.length = strlen(cliptext);
+		send_message(to->sock, &msg);
+		write_all(to->sock, cliptext, msg.setclipboard.length);
+	} else
+		set_clipboard_text(cliptext);
+
+	xfree(cliptext);
+}
+
 static struct xypoint saved_master_mousepos;
 
 static void switch_to_neighbor(direction_t dir)
@@ -89,6 +122,8 @@ static void switch_to_neighbor(direction_t dir)
 		saved_master_mousepos = get_mousepos();
 		grab_inputs();
 	}
+
+	transfer_clipboard(active_remote, switch_to);
 
 	active_remote = switch_to;
 }

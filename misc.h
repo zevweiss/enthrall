@@ -44,4 +44,6 @@ extern struct remote* active_remote;
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
 
+void disconnect_remote(struct remote* rmt, connstate_t state);
+
 #endif /* MISC_H */

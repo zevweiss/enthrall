@@ -261,7 +261,7 @@ static void setup_remote(struct remote* rmt)
 	}
 }
 
-static void disconnect_remote(struct remote* rmt, connstate_t state)
+void disconnect_remote(struct remote* rmt, connstate_t state)
 {
 	pid_t pid;
 	int status;
