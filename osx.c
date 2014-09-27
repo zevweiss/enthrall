@@ -72,15 +72,22 @@ static CGPoint get_mousepos_cgpoint(void)
 	return cgpt;
 }
 
-static void set_mousepos_cgpoint(CGPoint cgpt)
+#define NO_MOUSEBUTTON 0
+
+static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button)
 {
-	CGEventRef ev = CGEventCreateMouseEvent(NULL, kCGEventMouseMoved, cgpt, 0);
+	CGEventRef ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
 	}
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
+}
+
+static void set_mousepos_cgpoint(CGPoint cgpt)
+{
+	send_mouseevent(cgpt, kCGEventMouseMoved, NO_MOUSEBUTTON);
 }
 
 struct xypoint get_mousepos(void)
@@ -99,6 +106,11 @@ void set_mousepos(struct xypoint pt)
 	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
 }
 
+static inline int mouse_button_held(CGMouseButton btn)
+{
+	return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, btn);
+}
+
 void move_mousepos(int32_t dx, int32_t dy)
 {
 	CGPoint pt = get_mousepos_cgpoint();
@@ -106,7 +118,15 @@ void move_mousepos(int32_t dx, int32_t dy)
 	pt.x += dx;
 	pt.y += dy;
 
-	set_mousepos_cgpoint(pt);
+	/* Sigh...why can't Quartz figure this out by itself? */
+	if (mouse_button_held(kCGMouseButtonLeft))
+		send_mouseevent(pt, kCGEventLeftMouseDragged, kCGMouseButtonLeft);
+	else if (mouse_button_held(kCGMouseButtonRight))
+		send_mouseevent(pt, kCGEventRightMouseDragged, kCGMouseButtonRight);
+	else if (mouse_button_held(kCGMouseButtonCenter))
+		send_mouseevent(pt, kCGEventOtherMouseDragged, kCGMouseButtonCenter);
+	else
+		set_mousepos_cgpoint(pt);
 }
 
 void do_clickevent(mousebutton_t button, pressrel_t pr)
@@ -121,6 +141,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		cgtype = (pr == PR_PRESS) ? kCGEventLeftMouseDown : kCGEventLeftMouseUp;
 		cgbtn = kCGMouseButtonLeft;
 		break;
+
 	case MB_CENTER:
 		/*
 		 * kCGEventCenterMouse{Up,Down} don't exist...
@@ -133,6 +154,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		cgtype = (pr == PR_PRESS) ? kCGEventOtherMouseDown : kCGEventOtherMouseUp;
 		cgbtn = kCGMouseButtonCenter;
 		break;
+
 	case MB_RIGHT:
 		cgtype = (pr == PR_PRESS) ? kCGEventRightMouseDown : kCGEventRightMouseUp;
 		cgbtn = kCGMouseButtonRight;
