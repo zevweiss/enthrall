@@ -25,6 +25,8 @@ typedef enum {
 	MB_CENTER,
 	MB_SCROLLUP,
 	MB_SCROLLDOWN,
+	/* Remember to update this if/when needed... */
+	NUM_MOUSEBUTTONS = MB_SCROLLDOWN,
 } mousebutton_t;
 
 typedef enum {

@@ -183,6 +183,50 @@ void move_mousepos(int32_t dx, int32_t dy)
 		set_mousepos_cgpoint(pt);
 }
 
+/*
+ * Semi-arbitrary, vaguely-appropriate double-click threshold...once again,
+ * why do I need to do this manually?  Couldn't Quartz determine this?
+ */
+#define DBLCLICK_THRESH_US 250000
+
+static struct {
+	uint64_t last_clickevent;
+	int count;
+} click_history[NUM_MOUSEBUTTONS];
+
+/*
+ * 1: single-click, 2: double-click, 3: triple-click.
+ *
+ * See kCGMouseEventClickState:
+ *   https://developer.apple.com/library/mac/documentation/Carbon/Reference/QuartzEventServicesRef/Reference/reference.html#jumpTo_71
+ */
+static int64_t click_type(mousebutton_t btn, pressrel_t pr)
+{
+	int64_t type;
+	uint64_t now_us = get_microtime();
+	int* count = &click_history[btn].count;
+
+	/*
+	 * This may look sort of weird, but it's my best approximation of what
+	 * Apple seems (empirically) to be doing with real-native-hardware
+	 * clicks (at least for now).
+	 */
+
+	if ((now_us - click_history[btn].last_clickevent) > DBLCLICK_THRESH_US) {
+		*count = 1;
+		type = 1;
+	} else if (pr == PR_PRESS) {
+		(*count)++;
+		type = *count > 3 ? 2 : *count;
+	} else {
+		type = *count;
+	}
+
+	click_history[btn].last_clickevent = now_us;
+
+	return type;
+}
+
 void do_clickevent(mousebutton_t button, pressrel_t pr)
 {
 	CGEventType cgtype;
@@ -228,8 +272,12 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 
 	if (button == MB_SCROLLUP || button == MB_SCROLLDOWN)
 		ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, scrollamt);
-	else
+	else {
 		ev = CGEventCreateMouseEvent(NULL, cgtype, get_mousepos_cgpoint(), cgbtn);
+		CGEventSetIntegerValueField(ev, kCGMouseEventClickState,
+		                            click_type(button, pr));
+	}
+
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
