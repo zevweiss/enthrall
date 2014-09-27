@@ -20,12 +20,11 @@
 #define cground lroundf
 #endif
 
-
 /*
- * Best reference I can find:
- * http://uti.schwa.io/identifier/com.apple.traditional-mac-plain-text
+ * Selected from:
+ *   https://developer.apple.com/Library/ios/documentation/Miscellaneous/Reference/UTIRef/Articles/System-DeclaredUniformTypeIdentifiers.html
  */
-#define PLAINTEXT CFSTR("com.apple.traditional-mac-plain-text")
+#define PLAINTEXT CFSTR("public.utf8-plain-text")
 
 static PasteboardRef clipboard;
 
