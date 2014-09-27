@@ -521,12 +521,9 @@ static void handle_event(const XEvent* ev)
 		dir = switch_direction(&ev->xkey);
 		if (dir != NO_DIR)
 			switch_to_neighbor(dir);
-		else
-			printf("XKeyPressedEvent: %d\n", ev->xkey.keycode);
 		break;
 
 	case KeyRelease:
-		printf("XKeyReleasedEvent: %d\n", ev->xkey.keycode);
 		break;
 
 	case ButtonPress:
@@ -553,7 +550,6 @@ static void handle_event(const XEvent* ev)
 			xfree(clipboard_text);
 			clipboard_text = NULL;
 			xselection_owned_since = 0;
-			fprintf(stderr, "(selection cleared)\n");
 		}
 		break;
 
