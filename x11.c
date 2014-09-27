@@ -317,73 +317,69 @@ static const mousebutton_t pi_mousebuttons[] = {
 	[Button5] = MB_SCROLLDOWN,
 };
 
-static int handle_event(void)
+static void handle_event(const XEvent* ev)
 {
-	XEvent ev;
 	struct message msg;
 	direction_t dir;
-	int status = 1;
 
-	XNextEvent(xdisp, &ev);
-
-	switch (ev.type) {
+	switch (ev->type) {
 	case MotionNotify:
-		if (ev.xmotion.x_root == screen_center.x
-		    && ev.xmotion.y_root == screen_center.y)
+		if (ev->xmotion.x_root == screen_center.x
+		    && ev->xmotion.y_root == screen_center.y)
 			break;
 
 		msg.type = MT_MOVEREL;
-		msg.moverel.dx = ev.xmotion.x_root - last_seen_mousepos.x;
-		msg.moverel.dy = ev.xmotion.y_root - last_seen_mousepos.y;
+		msg.moverel.dx = ev->xmotion.x_root - last_seen_mousepos.x;
+		msg.moverel.dy = ev->xmotion.y_root - last_seen_mousepos.y;
 		send_message(active_remote->sock, &msg);
 
-		if (abs(ev.xmotion.x_root - screen_center.x) > 100
-		    || abs(ev.xmotion.y_root - screen_center.y) > 100) {
+		if (abs(ev->xmotion.x_root - screen_center.x) > 100
+		    || abs(ev->xmotion.y_root - screen_center.y) > 100) {
 			set_mousepos(screen_center);
 			last_seen_mousepos = screen_center;
 		} else {
-			last_seen_mousepos = (struct xypoint){ .x = ev.xmotion.x_root, .y = ev.xmotion.y_root, };
+			last_seen_mousepos = (struct xypoint){ .x = ev->xmotion.x_root, .y = ev->xmotion.y_root, };
 		}
 		break;
 
 	case KeyPress:
-		dir = switch_direction(&ev.xkey);
+		dir = switch_direction(&ev->xkey);
 		if (dir != NO_DIR)
 			switch_to_neighbor(dir);
 		else
-			printf("XKeyPressedEvent: %d\n", ev.xkey.keycode);
+			printf("XKeyPressedEvent: %d\n", ev->xkey.keycode);
 		break;
 
 	case KeyRelease:
-		printf("XKeyReleasedEvent: %d\n", ev.xkey.keycode);
-		if (ev.xkey.keycode == XKeysymToKeycode(xdisp, XK_q))
-			status = 0;
+		printf("XKeyReleasedEvent: %d\n", ev->xkey.keycode);
 		break;
 
 	case ButtonPress:
 		msg.type = MT_CLICKEVENT;
-		msg.clickevent.button = LOOKUP(ev.xbutton.button, pi_mousebuttons);
+		msg.clickevent.button = LOOKUP(ev->xbutton.button, pi_mousebuttons);
 		msg.clickevent.pressrel = PR_PRESS;
 		send_message(active_remote->sock, &msg);
 		break;
 
 	case ButtonRelease:
 		msg.type = MT_CLICKEVENT;
-		msg.clickevent.button = LOOKUP(ev.xbutton.button, pi_mousebuttons);
+		msg.clickevent.button = LOOKUP(ev->xbutton.button, pi_mousebuttons);
 		msg.clickevent.pressrel = PR_RELEASE;
 		send_message(active_remote->sock, &msg);
 		break;
 
 	default:
-		printf("Unknown XEvent type: %d\n", ev.type);
+		printf("Unknown XEvent type: %d\n", ev->type);
 		break;
 	}
-
-	return status;
 }
 
 void process_events(void)
 {
-	while (XPending(xdisp))
-		handle_event();
+	XEvent ev;
+
+	while (XPending(xdisp)) {
+		XNextEvent(xdisp, &ev);
+		handle_event(&ev);
+	}
 }
