@@ -98,6 +98,9 @@ struct config {
 	char* bind_address;
 	struct remote* remotes;
 
+	/* string-formatted hotkeys for switching in each direction */
+	char* switch_hotkeys[NUM_DIRECTIONS];
+
 	/* master's neighbors */
 	struct neighbor neighbors[NUM_DIRECTIONS];
 };

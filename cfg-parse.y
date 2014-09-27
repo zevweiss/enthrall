@@ -54,6 +54,7 @@ static struct remote* new_uninit_remote(void)
 %token NEWLINE
 %token EQ
 %token LBRACE RBRACE
+%token LBRACKET RBRACKET
 
 %token <i> INTEGER
 %token <str> STRING
@@ -61,7 +62,7 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_MASTER KW_REMOTE
 
-%token KW_REMOTESHELL KW_BINDADDR
+%token KW_REMOTESHELL KW_BINDADDR KW_SWITCHHOTKEY
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -103,6 +104,9 @@ master_opt: KW_REMOTESHELL EQ STRING {
 }
 | KW_BINDADDR EQ STRING {
 	st->cfg->bind_address = $3;
+}
+| KW_SWITCHHOTKEY LBRACKET DIRECTION RBRACKET EQ STRING {
+	st->cfg->switch_hotkeys[$3] = $6;
 }
 | DIRECTION EQ neighbor {
 	st->cfg->neighbors[$1] = $3;

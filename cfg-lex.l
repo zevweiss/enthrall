@@ -27,10 +27,13 @@ integer		[-]?[0-9]+
 
 "{"	return LBRACE;
 "}"	return RBRACE;
+"["	return LBRACKET;
+"]"	return RBRACKET;
 "="	return EQ;
 
 "remote-shell"	return KW_REMOTESHELL;
 "bind-address"	return KW_BINDADDR;
+"switch-hotkey"	return KW_SWITCHHOTKEY;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;
