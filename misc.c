@@ -1,6 +1,8 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "misc.h"
+
 int write_all(int fd, const void* buf, size_t len)
 {
 	ssize_t status;
