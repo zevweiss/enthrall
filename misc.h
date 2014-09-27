@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 
 #include "types.h"
@@ -31,6 +32,16 @@ static inline void* xcalloc(size_t s)
 		abort();
 	}
 	return p;
+}
+
+static inline char* xstrdup(const char* str)
+{
+	char* s = strdup(str);
+	if (!s) {
+		perror("strdup");
+		abort();
+	}
+	return s;
 }
 
 static inline void xfree(void* p)

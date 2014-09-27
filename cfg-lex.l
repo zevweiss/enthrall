@@ -52,7 +52,7 @@ integer		[-]?[0-9]+
 {string} {
 	int cqidx = strlen(cfg_text) - 1;
 	assert(cfg_text[0] == '"' && cfg_text[cqidx] == '"');
-	cfg_lval.str = strdup(cfg_text + 1);
+	cfg_lval.str = xstrdup(cfg_text + 1);
 	cfg_lval.str[cqidx-1] = '\0';
 	return STRING;
 }
