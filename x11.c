@@ -61,7 +61,7 @@ static direction_t switch_direction(const XKeyEvent* kev)
 		if (match_hotkey(&switchkeys[d], kev))
 			return d;
 	}
-	return -1;
+	return NO_DIR;
 }
 
 static void transfer_clipboard(struct remote* from, struct remote* to)
