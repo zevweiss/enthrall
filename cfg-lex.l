@@ -28,7 +28,6 @@ integer		[-]?[0-9]+
 "{"	return LBRACE;
 "}"	return RBRACE;
 "="	return EQ;
-";"	return SEMICOLON;
 
 "remote-shell"	return KW_REMOTESHELL;
 "bind-address"	return KW_BINDADDR;

@@ -53,7 +53,6 @@ static struct remote* new_uninit_remote(void)
 %token HASH
 %token NEWLINE
 %token EQ
-%token SEMICOLON
 %token LBRACE RBRACE
 
 %token <i> INTEGER
@@ -65,7 +64,6 @@ static struct remote* new_uninit_remote(void)
 %token KW_REMOTESHELL KW_BINDADDR
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
-%token KW_LEFT KW_RIGHT KW_UP KW_DOWN
 
 %token END 0 "EOF"
 
