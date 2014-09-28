@@ -56,5 +56,6 @@ int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
 
 void disconnect_remote(struct remote* rmt, connstate_t state);
+void transfer_clipboard(struct remote* from, struct remote* to);
 
 #endif /* MISC_H */
