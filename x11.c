@@ -134,7 +134,7 @@ static int do_hotkey(const XKeyEvent* kev)
 static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
 {
 	size_t klen;
-	int i;
+	int i, status;
 	KeySym sym;
 	const char* k = ks;
 	/* Scratch string buffer large enough to hold any substring of 'ks' */
@@ -161,23 +161,27 @@ static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
 		sym = XStringToKeysym(tmp);
 		if (sym == NoSymbol) {
 			fprintf(stderr, "Invalid key: '%s'\n", tmp);
-			return -1;
+			status = -1;
+			goto out;
 		}
 
 		if (!IsModifierKey(sym)) {
 			if (*kc) {
 				fprintf(stderr, "Invalid hotkey '%s': multiple "
 				        "non-modifier keys\n", ks);
-				return -1;
+				status = -1;
+				goto out;
 			}
 			*kc = XKeysymToKeycode(xdisp, sym);
 			if (!*kc) {
 				fprintf(stderr, "No keycode for keysym '%s'\n", tmp);
-				return -1;
+				status = -1;
+				goto out;
 			}
 		} else {
 			fprintf(stderr, "'%s' is not a valid hotkey key\n", tmp);
-			return -1;
+			status = -1;
+			goto out;
 		}
 
 	next:
@@ -188,7 +192,11 @@ static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
 		}
 	}
 
-	return 0;
+	status = 0;
+
+out:
+	xfree(tmp);
+	return status;
 }
 
 int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
