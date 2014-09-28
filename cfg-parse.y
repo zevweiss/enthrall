@@ -81,6 +81,14 @@ static struct remote* new_uninit_remote(void)
 
 input: blocks;
 
+/*
+ * Bison compat hack: Bison 3.x warns about empty rules not explicitly marked
+ * with '%empty', but earlier versions don't support the '%empty' marker, and
+ * also don't support -Wno-empty-rule to avoid the warning.  This is a
+ * best-effort kludge at supporting both with as few warnings as possible
+ * (just the one empty-rule warning for this, which serves as kind of a
+ * pseudo-%empty marker in other rules).
+ */
 EMPTY: /* empty */;
 
 blocks: EMPTY
