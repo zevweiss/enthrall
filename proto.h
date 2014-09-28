@@ -11,6 +11,7 @@ enum {
 	MT_SHUTDOWN,
 	MT_MOVEREL,
 	MT_CLICKEVENT,
+	MT_KEYEVENT,
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
 };
@@ -34,6 +35,11 @@ struct clickevent_msg {
 	uint32_t pressrel;
 };
 
+struct keyevent_msg {
+	uint32_t keycode;
+	uint32_t pressrel;
+};
+
 struct getclipboard_msg {
 };
 
@@ -49,6 +55,7 @@ struct message {
 		struct shutdown_msg shutdown;
 		struct moverel_msg moverel;
 		struct clickevent_msg clickevent;
+		struct keyevent_msg keyevent;
 		struct getclipboard_msg getclipboard;
 		struct setclipboard_msg setclipboard;
 	};
