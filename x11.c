@@ -103,7 +103,7 @@ static struct xypoint saved_master_mousepos;
 static void switch_to_neighbor(direction_t dir)
 {
 	struct remote* switch_to = active_remote;
-	struct neighbor* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
 
 	switch (n->type) {
 	case NT_NONE:

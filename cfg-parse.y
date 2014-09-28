@@ -23,7 +23,7 @@ int parse_cfg(const char* path, struct config* cfg);
 	char* str;
 	int64_t i;
 	direction_t dir;
-	struct neighbor neigh;
+	struct noderef noderef;
 };
 
 %code {
@@ -68,7 +68,7 @@ static struct remote* new_uninit_remote(void)
 
 %token END 0 "EOF"
 
-%type <neigh> neighbor
+%type <noderef> node
 
 %debug
 
@@ -108,11 +108,11 @@ master_opt: KW_REMOTESHELL EQ STRING {
 | KW_SWITCHHOTKEY LBRACKET DIRECTION RBRACKET EQ STRING {
 	st->cfg->switch_hotkeys[$3] = $6;
 }
-| DIRECTION EQ neighbor {
+| DIRECTION EQ node {
 	st->cfg->neighbors[$1] = $3;
 };
 
-neighbor: STRING {
+node: STRING {
 	$$.type = NT_REMOTE_TMPNAME;
 	$$.name = $1;
 }
@@ -153,7 +153,7 @@ remote_opt: KW_HOSTNAME EQ STRING {
 | KW_REMOTECMD EQ STRING {
 	st->nextrmt->remotecmd = $3;
 }
-| DIRECTION EQ neighbor {
+| DIRECTION EQ node {
 	st->nextrmt->neighbors[$1] = $3;
 };
 

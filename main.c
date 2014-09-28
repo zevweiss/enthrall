@@ -173,17 +173,10 @@ static struct remote* find_remote(const char* name)
 	return NULL;
 }
 
-static void mark_reachable(struct neighbor* n)
+static void resolve_noderef(struct noderef* n)
 {
-	int seen;
-	direction_t dir;
 	struct remote* rmt;
-
-	switch (n->type) {
-	case NT_REMOTE:
-		rmt = n->node;
-		break;
-	case NT_REMOTE_TMPNAME:
+	if (n->type == NT_REMOTE_TMPNAME) {
 		rmt = find_remote(n->name);
 		if (!rmt) {
 			fprintf(stderr, "No such remote: '%s'\n", n->name);
@@ -191,6 +184,21 @@ static void mark_reachable(struct neighbor* n)
 		}
 		n->type = NT_REMOTE;
 		n->node = rmt;
+	}
+}
+
+static void mark_reachable(struct noderef* n)
+{
+	int seen;
+	direction_t dir;
+	struct remote* rmt;
+
+	switch (n->type) {
+	case NT_REMOTE_TMPNAME:
+		resolve_noderef(n);
+		/* fallthrough */
+	case NT_REMOTE:
+		rmt = n->node;
 		break;
 	default:
 		return;

@@ -64,10 +64,10 @@ typedef enum {
 
 	/* initial state before a name gets resolved to a remote */
 	NT_REMOTE_TMPNAME,
-} neighbortype_t;
+} nodereftype_t;
 
-struct neighbor {
-	neighbortype_t type;
+struct noderef {
+	nodereftype_t type;
 	union {
 		char* name;
 		struct remote* node;
@@ -87,7 +87,7 @@ struct remote {
 	char* remotecmd;
 
 	/* neighbors */
-	struct neighbor neighbors[NUM_DIRECTIONS];
+	struct noderef neighbors[NUM_DIRECTIONS];
 
 	/* connection state */
 	connstate_t state;
@@ -106,7 +106,7 @@ struct config {
 	char* switch_hotkeys[NUM_DIRECTIONS];
 
 	/* master's neighbors */
-	struct neighbor neighbors[NUM_DIRECTIONS];
+	struct noderef neighbors[NUM_DIRECTIONS];
 };
 
 #endif /* COMMONDEFS_H */
