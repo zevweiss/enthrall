@@ -31,6 +31,11 @@ int set_clipboard_text(const char* text);
 
 void process_events(void);
 
+/*
+ * Initialized by platform_init().
+ */
+extern struct xypoint screen_center;
+
 int platform_init(void);
 void platform_exit(void);
 

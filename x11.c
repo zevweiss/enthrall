@@ -33,7 +33,7 @@ static struct {
 	int32_t x, y;
 } screen_dimensions;
 
-static struct xypoint screen_center;
+struct xypoint screen_center;
 
 struct hotkey {
 	KeySym sym;
@@ -63,51 +63,6 @@ static direction_t switch_direction(const XKeyEvent* kev)
 			return d;
 	}
 	return NO_DIR;
-}
-
-static struct xypoint saved_master_mousepos;
-
-static void switch_to_neighbor(direction_t dir)
-{
-	struct remote* switch_to = active_remote;
-	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
-
-	switch (n->type) {
-	case NT_NONE:
-		return;
-
-	case NT_MASTER:
-		switch_to = NULL;
-		break;
-
-	case NT_REMOTE:
-		switch_to = n->node;
-		if (switch_to->state != CS_CONNECTED) {
-			fprintf(stderr, "remote '%s' not connected, can't switch to\n",
-			        switch_to->alias);
-			return;
-		}
-		break;
-
-	default:
-		fprintf(stderr, "unexpected neighbor type %d\n", n->type);
-		return;
-	}
-
-	if (active_remote && !switch_to) {
-		ungrab_inputs();
-		set_mousepos(saved_master_mousepos);
-	} else if (!active_remote && switch_to) {
-		saved_master_mousepos = get_mousepos();
-		grab_inputs();
-	}
-
-	if (switch_to)
-		set_mousepos(screen_center);
-
-	transfer_clipboard(active_remote, switch_to);
-
-	active_remote = switch_to;
 }
 
 static unsigned int get_mod_mask(KeySym modsym)

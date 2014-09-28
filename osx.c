@@ -38,6 +38,10 @@ static struct rectangle screenbounds;
 
 static mach_timebase_info_data_t mach_timebase;
 
+struct xypoint screen_center;
+
+#define MEDIAN(x, y) ((x) + (((y)-(x)) / 2))
+
 int platform_init(void)
 {
 	CGError cgerr;
@@ -72,6 +76,9 @@ int platform_init(void)
 	screenbounds.x.max = CGRectGetMaxX(bounds) - 1;
 	screenbounds.y.min = CGRectGetMinY(bounds);
 	screenbounds.y.max = CGRectGetMaxY(bounds) - 1;
+
+	screen_center.x = MEDIAN(screenbounds.x.min, screenbounds.x.max);
+	screen_center.y = MEDIAN(screenbounds.y.min, screenbounds.y.max);
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {

@@ -331,6 +331,51 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 	xfree(cliptext);
 }
 
+static struct xypoint saved_master_mousepos;
+
+void switch_to_neighbor(direction_t dir)
+{
+	struct remote* switch_to = active_remote;
+	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+
+	switch (n->type) {
+	case NT_NONE:
+		return;
+
+	case NT_MASTER:
+		switch_to = NULL;
+		break;
+
+	case NT_REMOTE:
+		switch_to = n->node;
+		if (switch_to->state != CS_CONNECTED) {
+			fprintf(stderr, "remote '%s' not connected, can't switch to\n",
+			        switch_to->alias);
+			return;
+		}
+		break;
+
+	default:
+		fprintf(stderr, "unexpected neighbor type %d\n", n->type);
+		return;
+	}
+
+	if (active_remote && !switch_to) {
+		ungrab_inputs();
+		set_mousepos(saved_master_mousepos);
+	} else if (!active_remote && switch_to) {
+		saved_master_mousepos = get_mousepos();
+		grab_inputs();
+	}
+
+	if (switch_to)
+		set_mousepos(screen_center);
+
+	transfer_clipboard(active_remote, switch_to);
+
+	active_remote = switch_to;
+}
+
 static void handle_ready(struct remote* rmt)
 {
 	struct message msg;
