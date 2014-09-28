@@ -609,7 +609,7 @@ static void handle_event(XEvent* ev)
 		break;
 
 	default:
-		printf("Unknown XEvent type: %d\n", ev->type);
+		fprintf(stderr, "unexpected XEvent type: %d\n", ev->type);
 		break;
 	}
 }
