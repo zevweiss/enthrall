@@ -35,42 +35,34 @@ static struct {
 
 struct xypoint screen_center;
 
-struct hotkey {
-	KeySym sym;
+struct xhotkey {
+	KeyCode key;
 	unsigned int modmask;
+
+	void (*fn)(void*);
+	void* arg;
+
+	struct xhotkey* next;
 };
 
-#define SWITCHMODMASK (ControlMask|Mod1Mask|Mod4Mask)
+static struct xhotkey* xhotkeys = NULL;
 
-static const struct hotkey switchkeys[] = {
-	[LEFT] = { .sym = XK_a, .modmask = SWITCHMODMASK, },
-	[RIGHT] = { .sym = XK_d, .modmask = SWITCHMODMASK, },
-	[UP] = { .sym = None, .modmask = 0, },
-	[DOWN] = { .sym = None, .modmask = 0, },
+static const struct {
+	const char* name;
+	unsigned int mask;
+} xmodifiers[] = {
+	[ShiftMapIndex] = { "shift", ShiftMask, },
+	[LockMapIndex] = { "lock", LockMask, },
+	[ControlMapIndex] = { "control", ControlMask, },
+	[Mod1MapIndex] = { "mod1", Mod1Mask, },
+	[Mod2MapIndex] = { "mod2", Mod2Mask, },
+	[Mod3MapIndex] = { "mod3", Mod3Mask, },
+	[Mod4MapIndex] = { "mod4", Mod4Mask, },
+	[Mod5MapIndex] = { "mod5", Mod5Mask, },
 };
-
-static inline int match_hotkey(const struct hotkey* hk, const XKeyEvent* kev)
-{
-	return kev->keycode == XKeysymToKeycode(xdisp, hk->sym)
-		&& kev->state == hk->modmask;
-}
-
-static direction_t switch_direction(const XKeyEvent* kev)
-{
-	direction_t d;
-	for_each_direction (d) {
-		if (match_hotkey(&switchkeys[d], kev))
-			return d;
-	}
-	return NO_DIR;
-}
 
 static unsigned int get_mod_mask(KeySym modsym)
 {
-	static const unsigned int modifier_masks[] = {
-		ShiftMask, LockMask, ControlMask, Mod1Mask,
-		Mod2Mask, Mod3Mask, Mod4Mask, Mod5Mask,
-	};
 	int i;
 	unsigned int modmask = 0;
 	KeyCode nlkc = XKeysymToKeycode(xdisp, modsym);
@@ -78,7 +70,7 @@ static unsigned int get_mod_mask(KeySym modsym)
 
 	for (i = 0; i < 8 * modmap->max_keypermod; i++) {
 		if (modmap->modifiermap[i] == nlkc) {
-			modmask = modifier_masks[i / modmap->max_keypermod];
+			modmask = xmodifiers[i / modmap->max_keypermod].mask;
 			break;
 		}
 	}
@@ -88,19 +80,13 @@ static unsigned int get_mod_mask(KeySym modsym)
 	return modmask;
 }
 
-static void grab_key_by_sym(KeySym sym, unsigned int orig_mask, int flush)
+static void grab_key(KeyCode kc, unsigned int orig_mask)
 {
 	int ni, si, ci;
 	unsigned int modmask;
 	unsigned int nlk_mask = get_mod_mask(XK_Num_Lock);
 	unsigned int slk_mask = get_mod_mask(XK_Scroll_Lock);
 	unsigned int clk_mask = LockMask;
-	KeyCode code = XKeysymToKeycode(xdisp, sym);
-
-	if (!code) {
-		fprintf(stderr, "keysym %lu not defined\n", sym);
-		return;
-	}
 
 	/* Grab with all combinations of NumLock, ScrollLock and CapsLock */
 	for (ni = 0; ni < (nlk_mask ? 2 : 1); ni++) {
@@ -109,14 +95,137 @@ static void grab_key_by_sym(KeySym sym, unsigned int orig_mask, int flush)
 				modmask = (ci ? clk_mask : 0)
 					| (si ? slk_mask : 0)
 					| (ni ? nlk_mask : 0);
-				XGrabKey(xdisp, code, modmask | orig_mask, xrootwin,
+				XGrabKey(xdisp, kc, modmask | orig_mask, xrootwin,
 				         True, GrabModeAsync, GrabModeAsync);
 			}
 		}
 	}
 
-	if (flush)
-		XFlush(xdisp);
+	XFlush(xdisp);
+}
+
+static inline int match_hotkey(const struct xhotkey* hk, const XKeyEvent* kev)
+{
+	return kev->keycode == hk->key && kev->state == hk->modmask;
+}
+
+static const struct xhotkey* find_hotkey(const XKeyEvent* kev)
+{
+	const struct xhotkey* k;
+
+	for (k = xhotkeys; k; k = k->next) {
+		if (match_hotkey(k, kev))
+			return k;
+	}
+
+	return NULL;
+}
+
+static int do_hotkey(const XKeyEvent* kev)
+{
+	const struct xhotkey* k = find_hotkey(kev);
+
+	if (k)
+		k->fn(k->arg);
+
+	return !!k;
+}
+
+static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
+{
+	size_t klen;
+	int i;
+	KeySym sym;
+	const char* k = ks;
+	/* Scratch string buffer large enough to hold any substring of 'ks' */
+	char* tmp = xmalloc(strlen(ks)+1);
+
+	*kc = 0;
+	*modmask = 0;
+
+	while (*k) {
+		klen = strcspn(k, "+");
+		memcpy(tmp, k, klen);
+		tmp[klen] = '\0';
+
+		for (i = 0; i < ARR_LEN(xmodifiers); i++) {
+			if (!strcasecmp(xmodifiers[i].name, tmp)) {
+				*modmask |= xmodifiers[i].mask;
+				break;
+			}
+		}
+		/* If we found a modifer key, move on to the next key */
+		if (i < ARR_LEN(xmodifiers))
+			goto next;
+
+		sym = XStringToKeysym(tmp);
+		if (sym == NoSymbol) {
+			fprintf(stderr, "Invalid key: '%s'\n", tmp);
+			return -1;
+		}
+
+		if (!IsModifierKey(sym)) {
+			if (*kc) {
+				fprintf(stderr, "Invalid hotkey '%s': multiple "
+				        "non-modifier keys\n", ks);
+				return -1;
+			}
+			*kc = XKeysymToKeycode(xdisp, sym);
+			if (!*kc) {
+				fprintf(stderr, "No keycode for keysym '%s'\n", tmp);
+				return -1;
+			}
+		} else {
+			fprintf(stderr, "'%s' is not a valid hotkey key\n", tmp);
+			return -1;
+		}
+
+	next:
+		k += klen;
+		if (*k) {
+			assert(*k == '+');
+			k += 1;
+		}
+	}
+
+	return 0;
+}
+
+int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
+{
+	struct xhotkey* k;
+	KeyCode kc;
+	unsigned int modmask;
+	XKeyEvent kev;
+
+	if (parse_keystring(keystr, &kc, &modmask))
+		return -1;
+
+	/*
+	 * Mock up a fake XKeyEvent to search for collisions with
+	 * already-existing hotkey bindings.
+	 */
+	kev.keycode = kc;
+	kev.state = modmask;
+
+	if (find_hotkey(&kev)) {
+		fprintf(stderr, "hotkey '%s' conflicts with an existing hotkey binding\n",
+		        keystr);
+		return -1;
+	}
+
+	k = xmalloc(sizeof(*k));
+	k->key = kc;
+	k->modmask = modmask;
+	k->fn = fn;
+	k->arg = arg;
+	k->next = xhotkeys;
+
+	xhotkeys = k;
+
+	grab_key(kc, modmask);
+
+	return 0;
 }
 
 int platform_init(void)
@@ -150,10 +259,8 @@ int platform_init(void)
 	xcursor_blank = XCreatePixmapCursor(xdisp, cursor_pixmap, cursor_pixmap,
 	                                    &black, &black, 0, 0);
 
-	/* Grab hotkeys */
+	/* Clear any key grabs (not that any should exist, really...) */
 	XUngrabKey(xdisp, AnyKey, AnyModifier, xrootwin);
-	grab_key_by_sym(XK_a, ControlMask|Mod1Mask|Mod4Mask, 0);
-	grab_key_by_sym(XK_d, ControlMask|Mod1Mask|Mod4Mask, 1);
 
 	return XConnectionNumber(xdisp);
 }
@@ -230,10 +337,6 @@ static inline const char* grab_failure_message(int status)
 }
 
 #define PointerEventsMask (PointerMotionMask|ButtonPressMask|ButtonReleaseMask)
-#define KeyEventsMask (KeyPressMask|KeyReleaseMask)
-
-#define RemoteModeEventMask (PointerEventsMask|KeyEventsMask)
-#define MasterModeEventMask (PointerMotionMask)
 
 int grab_inputs(void)
 {
@@ -283,7 +386,7 @@ static void get_xevent(XEvent* e)
 
 	/* This is kind of gross... */
 
-#define GETTIME(type, structname)                                       \
+#define GETTIME(type, structname) \
 	case type: last_xevent_time = e->x##structname.time; break
 
 	switch (e->type) {
@@ -464,7 +567,6 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 static void handle_event(XEvent* ev)
 {
 	struct message msg;
-	direction_t dir;
 
 	switch (ev->type) {
 	case MotionNotify:
@@ -487,15 +589,12 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case KeyPress:
-		dir = switch_direction(&ev->xkey);
-		if (dir != NO_DIR)
-			switch_to_neighbor(dir);
-		else
+		if (!do_hotkey(&ev->xkey))
 			handle_keyevent(&ev->xkey, PR_PRESS);
 		break;
 
 	case KeyRelease:
-		if (switch_direction(&ev->xkey) == NO_DIR)
+		if (!find_hotkey(&ev->xkey))
 			handle_keyevent(&ev->xkey, PR_RELEASE);
 		break;
 

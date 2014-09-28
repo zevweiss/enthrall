@@ -97,13 +97,30 @@ struct remote {
 	struct remote* next;
 };
 
+typedef enum {
+	AT_SWITCH,
+	AT_SWITCHTO,
+} actiontype_t;
+
+struct action {
+	actiontype_t type;
+	union {
+		direction_t dir;
+		struct noderef node;
+	};
+};
+
+struct hotkey {
+	char* key_string;
+	struct action action;
+	struct hotkey* next;
+};
+
 struct config {
 	char* remote_shell;
 	char* bind_address;
 	struct remote* remotes;
-
-	/* string-formatted hotkeys for switching in each direction */
-	char* switch_hotkeys[NUM_DIRECTIONS];
+	struct hotkey* hotkeys;
 
 	/* master's neighbors */
 	struct noderef neighbors[NUM_DIRECTIONS];

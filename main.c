@@ -333,10 +333,9 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 
 static struct xypoint saved_master_mousepos;
 
-void switch_to_neighbor(direction_t dir)
+static void switch_to_node(struct noderef* n)
 {
-	struct remote* switch_to = active_remote;
-	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+	struct remote* switch_to;
 
 	switch (n->type) {
 	case NT_NONE:
@@ -374,6 +373,43 @@ void switch_to_neighbor(direction_t dir)
 	transfer_clipboard(active_remote, switch_to);
 
 	active_remote = switch_to;
+}
+
+static void switch_to_neighbor(direction_t dir)
+{
+	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+	switch_to_node(n);
+}
+
+static void action_cb(void* arg)
+{
+	struct action* a = arg;
+
+	switch (a->type) {
+	case AT_SWITCH:
+		switch_to_neighbor(a->dir);
+		break;
+
+	case AT_SWITCHTO:
+		switch_to_node(&a->node);
+		break;
+
+	default:
+		fprintf(stderr, "unknown action type %d\n", a->type);
+		break;
+	}
+}
+
+static void bind_hotkeys(void)
+{
+	struct hotkey* k;
+
+	for (k = config->hotkeys; k; k = k->next) {
+		if (k->action.type == AT_SWITCHTO)
+			resolve_noderef(&k->action.node);
+		if (bind_hotkey(k->key_string, action_cb, &k->action))
+			fprintf(stderr, "Failed to bind hotkey %s\n", k->key_string);
+	}
 }
 
 static void handle_ready(struct remote* rmt)
@@ -487,6 +523,7 @@ int main(int argc, char** argv)
 	}
 
 	check_remotes();
+	bind_hotkeys();
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next)
 		setup_remote(rmt);

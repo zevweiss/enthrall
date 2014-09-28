@@ -33,7 +33,9 @@ integer		[-]?[0-9]+
 
 "remote-shell"	return KW_REMOTESHELL;
 "bind-address"	return KW_BINDADDR;
-"switch-hotkey"	return KW_SWITCHHOTKEY;
+"hotkey"	return KW_HOTKEY;
+"switch"	return KW_SWITCH;
+"switch-to"	return KW_SWITCHTO;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;

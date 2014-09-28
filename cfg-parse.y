@@ -24,6 +24,7 @@ int parse_cfg(const char* path, struct config* cfg);
 	int64_t i;
 	direction_t dir;
 	struct noderef noderef;
+	struct action action;
 };
 
 %code {
@@ -62,13 +63,14 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_MASTER KW_REMOTE
 
-%token KW_REMOTESHELL KW_BINDADDR KW_SWITCHHOTKEY
+%token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
 %token END 0 "EOF"
 
 %type <noderef> node
+%type <action> action
 
 %debug
 
@@ -113,11 +115,24 @@ master_opt: KW_REMOTESHELL EQ STRING {
 | KW_BINDADDR EQ STRING {
 	st->cfg->bind_address = $3;
 }
-| KW_SWITCHHOTKEY LBRACKET DIRECTION RBRACKET EQ STRING {
-	st->cfg->switch_hotkeys[$3] = $6;
+| KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
+	struct hotkey* hk = xmalloc(sizeof(*hk));
+	hk->key_string = $3;
+	hk->action = $6;
+	hk->next = st->cfg->hotkeys;
+	st->cfg->hotkeys = hk;
 }
 | DIRECTION EQ node {
 	st->cfg->neighbors[$1] = $3;
+};
+
+action: KW_SWITCH DIRECTION {
+	$$.type = AT_SWITCH;
+	$$.dir = $2;
+}
+| KW_SWITCHTO node {
+	$$.type = AT_SWITCHTO;
+	$$.node = $2;
 };
 
 node: STRING {

@@ -23,6 +23,8 @@ void move_mousepos(int32_t dx, int32_t dy);
 void do_clickevent(mousebutton_t button, pressrel_t pr);
 void do_keyevent(keycode_t key, pressrel_t pr);
 
+int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg);
+
 int grab_inputs(void);
 void ungrab_inputs(void);
 

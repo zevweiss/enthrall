@@ -94,6 +94,12 @@ void platform_exit(void)
 	CFRelease(clipboard);
 }
 
+int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
+{
+	fprintf(stderr, "OSX bind_hotkey() not yet implemented\n");
+	return 1;
+}
+
 uint64_t get_microtime(void)
 {
 	uint64_t t = mach_absolute_time();

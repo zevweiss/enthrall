@@ -49,14 +49,9 @@ static inline void xfree(void* p)
 	free(p);
 }
 
-extern struct config* config;
 extern struct remote* active_remote;
 
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
-
-void disconnect_remote(struct remote* rmt, connstate_t state);
-void transfer_clipboard(struct remote* from, struct remote* to);
-void switch_to_neighbor(direction_t dir);
 
 #endif /* MISC_H */
