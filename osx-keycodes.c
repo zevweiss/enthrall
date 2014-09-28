@@ -122,10 +122,10 @@ static CGKeyCode basic_tocgkeycode[] = {
 	[ET_rightcontrol] = kcshift(kVK_RightControl),
 	[ET_leftshift]    = kcshift(kVK_Shift),
 	[ET_rightshift]   = kcshift(kVK_RightShift),
-	[ET_leftmod1]     = kcshift(kVK_Option),
-	[ET_rightmod1]    = kcshift(kVK_RightOption),
 	[ET_leftmod2]     = kcshift(kVK_Command),
 	[ET_rightmod2]    = kcshift(kVK_Command),
+	[ET_leftmod3]     = kcshift(kVK_Option),
+	[ET_rightmod3]    = kcshift(kVK_RightOption),
 
 	/* Miscellaneous stuff */
 	[ET_space]     = kcshift(kVK_Space),
