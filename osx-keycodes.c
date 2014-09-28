@@ -142,6 +142,28 @@ static CGKeyCode basic_tocgkeycode[] = {
 	[ET_end]       = kcshift(kVK_End),
 	[ET_pageup]    = kcshift(kVK_PageUp),
 	[ET_pagedown]  = kcshift(kVK_PageDown),
+
+	/* Function keys */
+	[ET_F1] = kcshift(kVK_F1),
+	[ET_F2] = kcshift(kVK_F2),
+	[ET_F3] = kcshift(kVK_F3),
+	[ET_F4] = kcshift(kVK_F4),
+	[ET_F5] = kcshift(kVK_F5),
+	[ET_F6] = kcshift(kVK_F6),
+	[ET_F7] = kcshift(kVK_F7),
+	[ET_F8] = kcshift(kVK_F8),
+	[ET_F9] = kcshift(kVK_F9),
+	[ET_F10] = kcshift(kVK_F10),
+	[ET_F11] = kcshift(kVK_F11),
+	[ET_F12] = kcshift(kVK_F12),
+	[ET_F13] = kcshift(kVK_F13),
+	[ET_F14] = kcshift(kVK_F14),
+	[ET_F15] = kcshift(kVK_F15),
+	[ET_F16] = kcshift(kVK_F16),
+	[ET_F17] = kcshift(kVK_F17),
+	[ET_F18] = kcshift(kVK_F18),
+	[ET_F19] = kcshift(kVK_F19),
+	[ET_F20] = kcshift(kVK_F20),
 };
 
 CGKeyCode keycode_to_cgkeycode(keycode_t kc)
