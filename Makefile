@@ -11,7 +11,7 @@ ifeq ($(shell uname -s),Darwin)
 	PLATDIR = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform
 	SDKDIR = $(PLATDIR)/Developer/SDKs/$(OSXVER).sdk
 	FMWKDIR = $(SDKDIR)/System/Library/Frameworks/
-	FRAMEWORKS = CoreFoundation CoreGraphics Carbon
+	FRAMEWORKS = CoreFoundation CoreGraphics Carbon IOKit
 	CFLAGS += -iframework $(FMWKDIR) $(foreach f,$(FRAMEWORKS),-framework $f)
 else
 	PLATFORM = x11

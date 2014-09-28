@@ -7,6 +7,7 @@
 
 #include <CoreGraphics/CGEvent.h>
 #include <CoreGraphics/CGDirectDisplay.h>
+#include <IOKit/hidsystem/event_status_driver.h>
 
 /*
  * Because unfortunately I can't currently figure out how to get just
@@ -40,6 +41,8 @@ static mach_timebase_info_data_t mach_timebase;
 
 struct xypoint screen_center;
 
+static uint64_t double_click_threshold_us;
+
 #define MEDIAN(x, y) ((x) + (((y)-(x)) / 2))
 
 int platform_init(void)
@@ -50,6 +53,7 @@ int platform_init(void)
 	CGRect bounds;
 	uint32_t num_active_displays;
 	kern_return_t kr;
+	NXEventHandle nxevh;
 
 	kr = mach_timebase_info(&mach_timebase);
 	if (kr != KERN_SUCCESS) {
@@ -57,6 +61,10 @@ int platform_init(void)
 		        mach_error_string(kr));
 		return -1;
 	}
+
+	nxevh = NXOpenEventStatus();
+	double_click_threshold_us = NXClickTime(nxevh) * 1000000;
+	NXCloseEventStatus(nxevh);
 
 	cgerr = CGGetActiveDisplayList(ARR_LEN(active_displays), active_displays,
 	                               &num_active_displays);
@@ -197,12 +205,6 @@ void move_mousepos(int32_t dx, int32_t dy)
 		set_mousepos_cgpoint(pt);
 }
 
-/*
- * Semi-arbitrary, vaguely-appropriate double-click threshold...once again,
- * why do I need to do this manually?  Couldn't Quartz determine this?
- */
-#define DBLCLICK_THRESH_US 250000
-
 struct click_history {
 	uint64_t last_press;
 	uint64_t last_release;
@@ -230,7 +232,7 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 	 * clicks (at least for now).
 	 */
 
-	if ((now_us - *prev) > DBLCLICK_THRESH_US) {
+	if ((now_us - *prev) > double_click_threshold_us) {
 		hist->count = 1;
 		type = 1;
 	} else if (pr == PR_PRESS) {
