@@ -51,14 +51,14 @@ static const struct {
 	const char* name;
 	unsigned int mask;
 } xmodifiers[] = {
-	[ShiftMapIndex] = { "shift", ShiftMask, },
-	[LockMapIndex] = { "lock", LockMask, },
-	[ControlMapIndex] = { "control", ControlMask, },
-	[Mod1MapIndex] = { "mod1", Mod1Mask, },
-	[Mod2MapIndex] = { "mod2", Mod2Mask, },
-	[Mod3MapIndex] = { "mod3", Mod3Mask, },
-	[Mod4MapIndex] = { "mod4", Mod4Mask, },
-	[Mod5MapIndex] = { "mod5", Mod5Mask, },
+	[ShiftMapIndex]   = { "shift",    ShiftMask,   },
+	[LockMapIndex]    = { "lock",     LockMask,    },
+	[ControlMapIndex] = { "control",  ControlMask, },
+	[Mod1MapIndex]    = { "mod1",     Mod1Mask,    },
+	[Mod2MapIndex]    = { "mod2",     Mod2Mask,    },
+	[Mod3MapIndex]    = { "mod3",     Mod3Mask,    },
+	[Mod4MapIndex]    = { "mod4",     Mod4Mask,    },
+	[Mod5MapIndex]    = { "mod5",     Mod5Mask,    },
 };
 
 static unsigned int get_mod_mask(KeySym modsym)
