@@ -20,7 +20,8 @@ struct xypoint get_mousepos(void);
 void set_mousepos(struct xypoint pos);
 void move_mousepos(int32_t dx, int32_t dy);
 
-void do_clickevent(mousebutton_t button, pressrel_t pressrel);
+void do_clickevent(mousebutton_t button, pressrel_t pr);
+void do_keyevent(keycode_t key, pressrel_t pr);
 
 int grab_inputs(void);
 void ungrab_inputs(void);

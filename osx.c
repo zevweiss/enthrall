@@ -18,6 +18,7 @@
 #include "misc.h"
 #include "proto.h"
 #include "platform.h"
+#include "osx-keycodes.h"
 
 #if CGFLOAT_IS_DOUBLE
 #define cground lround
@@ -284,6 +285,26 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
+		abort();
+	}
+	CGEventPost(kCGHIDEventTap, ev);
+	CFRelease(ev);
+}
+
+void do_keyevent(keycode_t key, pressrel_t pr)
+{
+	CGEventRef ev;
+	CGKeyCode cgkc;
+
+	cgkc = keycode_to_cgkeycode(key);
+	if (cgkc == kVK_NULL) {
+		fprintf(stderr, "keycode %u not mapped\n", key);
+		return;
+	}
+
+	ev = CGEventCreateKeyboardEvent(NULL, cgkc, pr == PR_PRESS);
+	if (!ev) {
+		fprintf(stderr, "CGEventCreateKeyboardEvent() failed\n");
 		abort();
 	}
 	CGEventPost(kCGHIDEventTap, ev);

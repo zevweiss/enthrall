@@ -1,6 +1,7 @@
 #ifndef COMMONDEFS_H
 #define COMMONDEFS_H
 
+#include <unistd.h>
 #include <stdint.h>
 
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
@@ -28,6 +29,9 @@ typedef enum {
 	/* Remember to update this if/when needed... */
 	NUM_MOUSEBUTTONS = MB_SCROLLDOWN,
 } mousebutton_t;
+
+/* Platform-independent internal representation of a keyboard key */
+typedef uint32_t keycode_t;
 
 typedef enum {
 	PR_PRESS = 1,

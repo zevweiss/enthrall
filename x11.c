@@ -10,6 +10,7 @@
 #include "types.h"
 #include "misc.h"
 #include "platform.h"
+#include "x11-keycodes.h"
 
 #include "proto.h"
 
@@ -291,6 +292,11 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 	fprintf(stderr, "x11 clickevent not yet implemented\n");
 }
 
+void do_keyevent(keycode_t key, pressrel_t pr)
+{
+	fprintf(stderr, "x11 keyevent not yet implemented\n");
+}
+
 static inline const char* grab_failure_message(int status)
 {
 	switch (status) {
@@ -506,7 +512,34 @@ static void handle_selection_request(const XSelectionRequestEvent* req)
 		fprintf(stderr, "Failed to send SelectionNotify to requestor\n");
 }
 
-static void handle_event(const XEvent* ev)
+static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
+{
+	struct message msg;
+	KeySym sym;
+	keycode_t kc;
+
+	if (!active_remote) {
+		fprintf(stderr, "keyevent with no active remote\n");
+		return;
+	}
+
+	sym = XLookupKeysym(kev, 0);
+	kc = keysym_to_keycode(sym);
+
+	if (kc == ET_null) {
+		fprintf(stderr, "No mapping for keysym %lu (%s)\n", sym,
+		        XKeysymToString(sym));
+		return;
+	}
+
+	msg.type = MT_KEYEVENT;
+	msg.keyevent.keycode = kc;
+	msg.keyevent.pressrel = pr;
+
+	send_message(active_remote->sock, &msg);
+}
+
+static void handle_event(XEvent* ev)
 {
 	struct message msg;
 	direction_t dir;
@@ -535,9 +568,13 @@ static void handle_event(const XEvent* ev)
 		dir = switch_direction(&ev->xkey);
 		if (dir != NO_DIR)
 			switch_to_neighbor(dir);
+		else
+			handle_keyevent(&ev->xkey, PR_PRESS);
 		break;
 
 	case KeyRelease:
+		if (switch_direction(&ev->xkey) == NO_DIR)
+			handle_keyevent(&ev->xkey, PR_RELEASE);
 		break;
 
 	case ButtonPress:

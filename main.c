@@ -49,6 +49,10 @@ static void handle_message(void)
 		do_clickevent(msg.clickevent.button, msg.clickevent.pressrel);
 		break;
 
+	case MT_KEYEVENT:
+		do_keyevent(msg.keyevent.keycode, msg.keyevent.pressrel);
+		break;
+
 	case MT_GETCLIPBOARD:
 		cliptext = get_clipboard_text();
 		cliplen = strlen(cliptext);
