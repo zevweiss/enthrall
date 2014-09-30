@@ -164,6 +164,24 @@ static CGKeyCode basic_tocgkeycode[] = {
 	[ET_F18] = kcshift(kVK_F18),
 	[ET_F19] = kcshift(kVK_F19),
 	[ET_F20] = kcshift(kVK_F20),
+
+	[ET_KP_0] = kcshift(kVK_ANSI_Keypad0),
+	[ET_KP_1] = kcshift(kVK_ANSI_Keypad1),
+	[ET_KP_2] = kcshift(kVK_ANSI_Keypad2),
+	[ET_KP_3] = kcshift(kVK_ANSI_Keypad3),
+	[ET_KP_4] = kcshift(kVK_ANSI_Keypad4),
+	[ET_KP_5] = kcshift(kVK_ANSI_Keypad5),
+	[ET_KP_6] = kcshift(kVK_ANSI_Keypad6),
+	[ET_KP_7] = kcshift(kVK_ANSI_Keypad7),
+	[ET_KP_8] = kcshift(kVK_ANSI_Keypad8),
+	[ET_KP_9] = kcshift(kVK_ANSI_Keypad9),
+	[ET_KP_dot] = kcshift(kVK_ANSI_KeypadDecimal),
+	[ET_KP_multiply] = kcshift(kVK_ANSI_KeypadMultiply),
+	[ET_KP_divide] = kcshift(kVK_ANSI_KeypadDivide),
+	[ET_KP_add] = kcshift(kVK_ANSI_KeypadPlus),
+	[ET_KP_subtract] = kcshift(kVK_ANSI_KeypadMinus),
+	[ET_KP_enter] = kcshift(kVK_ANSI_KeypadEnter),
+	[ET_KP_equal] = kcshift(kVK_ANSI_KeypadEquals),
 };
 
 CGKeyCode keycode_to_cgkeycode(keycode_t kc)
