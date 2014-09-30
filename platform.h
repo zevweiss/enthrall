@@ -23,7 +23,12 @@ void move_mousepos(int32_t dx, int32_t dy);
 void do_clickevent(mousebutton_t button, pressrel_t pr);
 void do_keyevent(keycode_t key, pressrel_t pr);
 
-int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg);
+/* An opaque, platform-dependent "context" type associated with a hotkey event. */
+typedef const struct hotkey_context* hotkey_context_t;
+typedef void (*hotkey_callback_t)(hotkey_context_t ctx, void* arg);
+
+int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg);
+keycode_t* get_hotkey_modifiers(hotkey_context_t ctx);
 
 int grab_inputs(void);
 void ungrab_inputs(void);

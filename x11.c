@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <limits.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -39,7 +40,7 @@ struct xhotkey {
 	KeyCode key;
 	unsigned int modmask;
 
-	void (*fn)(void*);
+	hotkey_callback_t callback;
 	void* arg;
 
 	struct xhotkey* next;
@@ -121,14 +122,61 @@ static const struct xhotkey* find_hotkey(const XKeyEvent* kev)
 	return NULL;
 }
 
+struct hotkey_context {
+	const XKeyEvent* event;
+	char keymap_state[32];
+};
+
 static int do_hotkey(const XKeyEvent* kev)
 {
+	struct hotkey_context ctx = { .event = kev, };
 	const struct xhotkey* k = find_hotkey(kev);
 
-	if (k)
-		k->fn(k->arg);
+	if (k) {
+		/*
+		 * Possibly racy I think?  Maybe check that keymap state
+		 * hasn't changed since we got the hotkey event?
+		 */
+		XQueryKeymap(xdisp, ctx.keymap_state);
+		k->callback(&ctx, k->arg);
+	}
 
 	return !!k;
+}
+
+keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
+{
+	int i, bit;
+	keycode_t etk;
+	KeyCode kc;
+	KeySym sym;
+	int maxmods = ARR_LEN(xmodifiers) * 2; /* kludge */
+	keycode_t* modkeys = xmalloc((maxmods + 1) * sizeof(*modkeys));
+	int modcount = 0;
+
+	for (i = 0; i < ARR_LEN(ctx->keymap_state); i++) {
+		if (!ctx->keymap_state[i])
+			continue;
+
+		for (bit = 0; bit < CHAR_BIT; bit++) {
+			if (ctx->keymap_state[i] & (1 << bit)) {
+				kc = (i * CHAR_BIT) + bit;
+				sym = XKeycodeToKeysym(xdisp, kc, 0);
+				if (!IsModifierKey(sym))
+					continue;
+				etk = keysym_to_keycode(sym);
+				if (etk != ET_null) {
+					modkeys[modcount++] = etk;
+					if (modcount == maxmods)
+						goto out;
+				}
+			}
+		}
+	}
+out:
+	modkeys[modcount] = ET_null;
+
+	return modkeys;
 }
 
 static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
@@ -199,7 +247,7 @@ out:
 	return status;
 }
 
-int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
+int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 {
 	struct xhotkey* k;
 	KeyCode kc;
@@ -225,7 +273,7 @@ int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
 	k = xmalloc(sizeof(*k));
 	k->key = kc;
 	k->modmask = modmask;
-	k->fn = fn;
+	k->callback = cb;
 	k->arg = arg;
 	k->next = xhotkeys;
 

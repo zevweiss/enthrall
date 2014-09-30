@@ -102,10 +102,16 @@ void platform_exit(void)
 	CFRelease(clipboard);
 }
 
-int bind_hotkey(const char* keystr, void (*fn)(void*), void* arg)
+int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 {
 	fprintf(stderr, "OSX bind_hotkey() not yet implemented\n");
 	return 1;
+}
+
+keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
+{
+	fprintf(stderr, "OSX get_hotkey_modifiers() not yet implemented\n");
+	return NULL;
 }
 
 uint64_t get_microtime(void)

@@ -13,6 +13,7 @@
 #include "misc.h"
 #include "proto.h"
 #include "platform.h"
+#include "keycodes.h"
 
 #include "cfg-parse.tab.h"
 
@@ -331,6 +332,28 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 	xfree(cliptext);
 }
 
+void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
+{
+	int i;
+	struct message msg = { .type = MT_KEYEVENT, };
+
+	if (from) {
+		msg.keyevent.pressrel = PR_RELEASE;
+		for (i = 0; modkeys[i] != ET_null; i++) {
+			msg.keyevent.keycode = modkeys[i];
+			send_message(from->sock, &msg);
+		}
+	}
+
+	if (to) {
+		msg.keyevent.pressrel = PR_PRESS;
+		for (i = 0; modkeys[i] != ET_null; i++) {
+			msg.keyevent.keycode = modkeys[i];
+			send_message(to->sock, &msg);
+		}
+	}
+}
+
 void send_keyevent(keycode_t kc, pressrel_t pr)
 {
 	struct message msg = {
@@ -366,7 +389,7 @@ void send_clickevent(mousebutton_t button, pressrel_t pr)
 
 static struct xypoint saved_master_mousepos;
 
-static void switch_to_node(struct noderef* n)
+static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 {
 	struct remote* switch_to;
 
@@ -404,33 +427,37 @@ static void switch_to_node(struct noderef* n)
 		set_mousepos(screen_center);
 
 	transfer_clipboard(active_remote, switch_to);
+	transfer_modifiers(active_remote, switch_to, modkeys);
 
 	active_remote = switch_to;
 }
 
-static void switch_to_neighbor(direction_t dir)
+static void switch_to_neighbor(direction_t dir, keycode_t* modkeys)
 {
 	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
-	switch_to_node(n);
+	switch_to_node(n, modkeys);
 }
 
-static void action_cb(void* arg)
+static void action_cb(hotkey_context_t ctx, void* arg)
 {
 	struct action* a = arg;
+	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
 	switch (a->type) {
 	case AT_SWITCH:
-		switch_to_neighbor(a->dir);
+		switch_to_neighbor(a->dir, modkeys);
 		break;
 
 	case AT_SWITCHTO:
-		switch_to_node(&a->node);
+		switch_to_node(&a->node, modkeys);
 		break;
 
 	default:
 		fprintf(stderr, "unknown action type %d\n", a->type);
 		break;
 	}
+
+	xfree(modkeys);
 }
 
 static void bind_hotkeys(void)
