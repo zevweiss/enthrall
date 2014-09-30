@@ -161,11 +161,6 @@ static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 	CFRelease(ev);
 }
 
-static void set_mousepos_cgpoint(CGPoint cgpt)
-{
-	send_mouseevent(cgpt, kCGEventMouseMoved, NO_MOUSEBUTTON);
-}
-
 struct xypoint get_mousepos(void)
 {
 	struct xypoint pt;
@@ -177,14 +172,22 @@ struct xypoint get_mousepos(void)
 	return pt;
 }
 
-void set_mousepos(struct xypoint pt)
-{
-	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
-}
-
 static inline int mouse_button_held(CGMouseButton btn)
 {
 	return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, btn);
+}
+
+static uint64_t last_mouse_move;
+
+static void set_mousepos_cgpoint(CGPoint cgpt)
+{
+	send_mouseevent(cgpt, kCGEventMouseMoved, NO_MOUSEBUTTON);
+	last_mouse_move = get_microtime();
+}
+
+void set_mousepos(struct xypoint pt)
+{
+	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
 }
 
 void move_mousepos(int32_t dx, int32_t dy)
@@ -232,7 +235,7 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 	 * clicks (at least for now).
 	 */
 
-	if ((now_us - *prev) > double_click_threshold_us) {
+	if ((now_us - *prev) > double_click_threshold_us || last_mouse_move > *prev) {
 		hist->count = 1;
 		type = 1;
 	} else if (pr == PR_PRESS) {
