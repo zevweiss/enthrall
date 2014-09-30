@@ -43,6 +43,8 @@ struct xypoint screen_center;
 
 static uint64_t double_click_threshold_us;
 
+static CGEventFlags modflags;
+
 #define MEDIAN(x, y) ((x) + (((y)-(x)) / 2))
 
 int platform_init(void)
@@ -315,10 +317,34 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 	CFRelease(ev);
 }
 
+static CGEventFlags key_eventflag(CGKeyCode cgk)
+{
+	switch (cgk) {
+	case kVK_Control:
+	case kVK_RightControl:
+		return kCGEventFlagMaskControl;
+
+	case kVK_Shift:
+	case kVK_RightShift:
+		return kCGEventFlagMaskShift;
+
+	case kVK_Option:
+	case kVK_RightOption:
+		return kCGEventFlagMaskAlternate;
+
+	case kVK_Command:
+		return kCGEventFlagMaskCommand;
+
+	default:
+		return 0;
+	}
+}
+
 void do_keyevent(keycode_t key, pressrel_t pr)
 {
 	CGEventRef ev;
 	CGKeyCode cgkc;
+	CGEventFlags flags;
 
 	cgkc = keycode_to_cgkeycode(key);
 	if (cgkc == kVK_NULL) {
@@ -326,11 +352,30 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 		return;
 	}
 
+	if (is_modifier_key(key)) {
+		flags = key_eventflag(cgkc);
+		if (pr == PR_PRESS)
+			modflags |= flags;
+		else
+			modflags &= ~flags;
+
+		ev = CGEventCreate(NULL);
+		CGEventSetType(ev, kCGEventFlagsChanged);
+		CGEventSetFlags(ev, modflags);
+		CFRelease(ev);
+	}
+
 	ev = CGEventCreateKeyboardEvent(NULL, cgkc, pr == PR_PRESS);
 	if (!ev) {
 		fprintf(stderr, "CGEventCreateKeyboardEvent() failed\n");
 		abort();
 	}
+
+	flags = modflags;
+	if (is_keypad_key(key))
+		flags |= kCGEventFlagMaskNumericPad;
+	CGEventSetFlags(ev, flags);
+
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
 }
