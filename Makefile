@@ -3,6 +3,7 @@ FLEX = flex
 BISON = bison
 
 CFLAGS = -Wall -Werror -ggdb3
+LIBS =
 
 ifeq ($(shell uname -s),Darwin)
 	PLATFORM = osx
@@ -16,7 +17,7 @@ ifeq ($(shell uname -s),Darwin)
 else
 	PLATFORM = x11
 	CC = gcc
-	CFLAGS += -lX11
+	LIBS += -lX11 -lrt
 endif
 
 CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h
@@ -26,7 +27,7 @@ HEADERS = misc.h types.h proto.h platform.h keycodes.h $(PLATFORM)-keycodes.h
 SRCS = main.c proto.c misc.c $(PLATFORM).c $(PLATFORM)-keycodes.c
 
 enthrall: $(SRCS) $(HEADERS) $(CFGSRCS)
-	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^)
+	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^) $(LIBS)
 
 %.yy.h: %.yy.c
 	@touch $@
