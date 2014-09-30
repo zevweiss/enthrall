@@ -127,6 +127,9 @@ enum {
 	ET_leftmod5,
 	ET_rightmod5,
 
+	ET__MODIFIER_MIN_ = ET_leftshift,
+	ET__MODIFIER_MAX_ = ET_rightmod5,
+
 	/* Miscellaneous stuff */
 	ET_space,
 	ET_return,
@@ -161,6 +164,9 @@ enum {
 	ET_KP_add,
 	ET_KP_enter,
 	ET_KP_dot,
+
+	ET__KP_MIN_ = ET_KP_0,
+	ET__KP_MAX_ = ET_KP_dot,
 
 	/* Function keys */
 	ET_F1,
@@ -205,5 +211,15 @@ enum {
 	ET_brightnessup,
 	ET_brightnessdown,
 };
+
+static inline int is_modifier_key(keycode_t k)
+{
+	return k >= ET__MODIFIER_MIN_ && k <= ET__MODIFIER_MAX_;
+}
+
+static inline int is_keypad_key(keycode_t k)
+{
+	return k >= ET__KP_MIN_ && k <= ET__KP_MAX_;
+}
 
 #endif /* KEYCODES_H */
