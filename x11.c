@@ -547,7 +547,6 @@ static void handle_selection_request(const XSelectionRequestEvent* req)
 
 static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 {
-	struct message msg;
 	KeySym sym;
 	keycode_t kc;
 
@@ -565,27 +564,19 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 		return;
 	}
 
-	msg.type = MT_KEYEVENT;
-	msg.keyevent.keycode = kc;
-	msg.keyevent.pressrel = pr;
-
-	send_message(active_remote->sock, &msg);
+	send_keyevent(kc, pr);
 }
 
 static void handle_event(XEvent* ev)
 {
-	struct message msg;
-
 	switch (ev->type) {
 	case MotionNotify:
 		if (ev->xmotion.x_root == screen_center.x
 		    && ev->xmotion.y_root == screen_center.y)
 			break;
 
-		msg.type = MT_MOVEREL;
-		msg.moverel.dx = ev->xmotion.x_root - last_seen_mousepos.x;
-		msg.moverel.dy = ev->xmotion.y_root - last_seen_mousepos.y;
-		send_message(active_remote->sock, &msg);
+		send_moverel(ev->xmotion.x_root - last_seen_mousepos.x,
+		             ev->xmotion.y_root - last_seen_mousepos.y);
 
 		if (abs(ev->xmotion.x_root - screen_center.x) > 1
 		    || abs(ev->xmotion.y_root - screen_center.y) > 1) {
@@ -607,17 +598,11 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case ButtonPress:
-		msg.type = MT_CLICKEVENT;
-		msg.clickevent.button = LOOKUP(ev->xbutton.button, pi_mousebuttons);
-		msg.clickevent.pressrel = PR_PRESS;
-		send_message(active_remote->sock, &msg);
+		send_clickevent(LOOKUP(ev->xbutton.button, pi_mousebuttons), PR_PRESS);
 		break;
 
 	case ButtonRelease:
-		msg.type = MT_CLICKEVENT;
-		msg.clickevent.button = LOOKUP(ev->xbutton.button, pi_mousebuttons);
-		msg.clickevent.pressrel = PR_RELEASE;
-		send_message(active_remote->sock, &msg);
+		send_clickevent(LOOKUP(ev->xbutton.button, pi_mousebuttons), PR_RELEASE);
 		break;
 
 	case SelectionRequest:

@@ -331,6 +331,39 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 	xfree(cliptext);
 }
 
+void send_keyevent(keycode_t kc, pressrel_t pr)
+{
+	struct message msg = {
+		.type = MT_KEYEVENT,
+		.keyevent.keycode = kc,
+		.keyevent.pressrel = pr,
+	};
+
+	send_message(active_remote->sock, &msg);
+}
+
+void send_moverel(int32_t dx, int32_t dy)
+{
+	struct message msg = {
+		.type = MT_MOVEREL,
+		.moverel.dx = dx,
+		.moverel.dy = dy,
+	};
+
+	send_message(active_remote->sock, &msg);
+}
+
+void send_clickevent(mousebutton_t button, pressrel_t pr)
+{
+	struct message msg = {
+		.type = MT_CLICKEVENT,
+		.clickevent.button = button,
+		.clickevent.pressrel = pr,
+	};
+
+	send_message(active_remote->sock, &msg);
+}
+
 static struct xypoint saved_master_mousepos;
 
 static void switch_to_node(struct noderef* n)

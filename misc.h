@@ -50,6 +50,9 @@ static inline void xfree(void* p)
 }
 
 extern struct remote* active_remote;
+void send_keyevent(keycode_t kc, pressrel_t pr);
+void send_moverel(int32_t dx, int32_t dy);
+void send_clickevent(mousebutton_t button, pressrel_t pr);
 
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
