@@ -305,8 +305,9 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, scrollamt);
 	else {
 		ev = CGEventCreateMouseEvent(NULL, cgtype, get_mousepos_cgpoint(), cgbtn);
-		CGEventSetIntegerValueField(ev, kCGMouseEventClickState,
-		                            click_type(button, pr));
+		if (ev)
+			CGEventSetIntegerValueField(ev, kCGMouseEventClickState,
+			                            click_type(button, pr));
 	}
 
 	if (!ev) {
@@ -360,6 +361,10 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 			modflags &= ~flags;
 
 		ev = CGEventCreate(NULL);
+		if (!ev) {
+			fprintf(stderr, "CGEventCreate() failed\n");
+			abort();
+		}
 		CGEventSetType(ev, kCGEventFlagsChanged);
 		CGEventSetFlags(ev, modflags);
 		CFRelease(ev);
