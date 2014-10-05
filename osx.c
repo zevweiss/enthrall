@@ -314,6 +314,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
 	}
+	CGEventSetFlags(ev, modflags);
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
 }
