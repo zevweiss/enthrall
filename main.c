@@ -362,7 +362,8 @@ void send_keyevent(keycode_t kc, pressrel_t pr)
 		.keyevent.pressrel = pr,
 	};
 
-	send_message(active_remote->sock, &msg);
+	if (active_remote)
+		send_message(active_remote->sock, &msg);
 }
 
 void send_moverel(int32_t dx, int32_t dy)
@@ -373,7 +374,8 @@ void send_moverel(int32_t dx, int32_t dy)
 		.moverel.dy = dy,
 	};
 
-	send_message(active_remote->sock, &msg);
+	if (active_remote)
+		send_message(active_remote->sock, &msg);
 }
 
 void send_clickevent(mousebutton_t button, pressrel_t pr)
@@ -384,7 +386,8 @@ void send_clickevent(mousebutton_t button, pressrel_t pr)
 		.clickevent.pressrel = pr,
 	};
 
-	send_message(active_remote->sock, &msg);
+	if (active_remote)
+		send_message(active_remote->sock, &msg);
 }
 
 static struct xypoint saved_master_mousepos;
