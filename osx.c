@@ -246,7 +246,7 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 
 	if ((now_us - *prev) > double_click_threshold_us || last_mouse_move > *prev) {
 		hist->count = 1;
-		type = 1;
+		type = (pr == PR_PRESS) ? 1 : 0;
 	} else if (pr == PR_PRESS) {
 		hist->count++;
 		type = hist->count > 3 ? 2 : hist->count;
