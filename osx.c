@@ -165,6 +165,7 @@ static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
 	}
+	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
 }
@@ -314,7 +315,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
 		abort();
 	}
-	CGEventSetFlags(ev, modflags);
+	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
 	CGEventPost(kCGHIDEventTap, ev);
 	CFRelease(ev);
 }
