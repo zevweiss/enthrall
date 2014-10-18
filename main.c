@@ -111,8 +111,7 @@ static void exec_remote_shell(const struct remote* rmt)
 	char portbuf[32];
 	char* argv[] = {
 		remote_shell,
-		"-oPasswordAuthentication=no",
-		"-oNumberOfPasswordPrompts=0",
+		"-oBatchMode=yes",
 
 		/* placeholders */
 		NULL, /* -b */
@@ -126,7 +125,7 @@ static void exec_remote_shell(const struct remote* rmt)
 
 		NULL, /* argv terminator */
 	};
-	int nargs = 3;
+	int nargs = 2;
 
 	if (config->bind_address) {
 		argv[nargs++] = "-b";
