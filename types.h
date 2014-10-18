@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include "proto.h"
+
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
 struct xypoint {
 	int32_t x;
@@ -93,6 +95,16 @@ struct remote {
 	connstate_t state;
 	pid_t sshpid;
 	int sock;
+
+	/* For buffering partial inbound & outbound messages */
+	struct partrecv recv_msgbuf;
+	struct partsend send_msgbuf;
+
+	struct {
+		struct message* head;
+		struct message* tail;
+		int num_queued;
+	} sendqueue;
 
 	struct remote* next;
 };

@@ -274,6 +274,8 @@ static void setup_remote(struct remote* rmt)
 	} else {
 		rmt->sock = sockfds[0];
 
+		set_fd_nonblock(rmt->sock, 1);
+
 		if (close(sockfds[1]))
 			perror("close");
 	}
@@ -300,102 +302,117 @@ void disconnect_remote(struct remote* rmt, connstate_t state)
 	rmt->sshpid = -1;
 
 	rmt->state = state;
+
+	/* FIXME: if (rmt == active_remote) { ... } */
+}
+
+#define MAX_SEND_BACKLOG 512
+
+static void enqueue_message(struct remote* rmt, struct message* msg)
+{
+	msg->next = NULL;
+	if (rmt->sendqueue.tail)
+		rmt->sendqueue.tail->next = msg;
+	rmt->sendqueue.tail = msg;
+	if (!rmt->sendqueue.head)
+		rmt->sendqueue.head = msg;
+	rmt->sendqueue.num_queued += 1;
+
+	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG) {
+		fprintf(stderr, "remote '%s' exceeds send backlog, disconnecting.\n",
+		        rmt->alias);
+		disconnect_remote(rmt, CS_FAILED);
+	}
 }
 
 void transfer_clipboard(struct remote* from, struct remote* to)
 {
-	char* cliptext;
-	struct message msg;
+	struct message* msg;
 
-	if (from) {
-		msg.type = MT_GETCLIPBOARD;
-		msg.extra.len = 0;
-		send_message(from->sock, &msg);
-		receive_message(from->sock, &msg);
-		if (msg.type != MT_SETCLIPBOARD) {
-			fprintf(stderr, "remote '%s' misbehaving, disconnecting\n",
-			        from->alias);
-			disconnect_remote(from, CS_FAILED);
-		}
-		cliptext = xmalloc(msg.extra.len + 1);
-		memcpy(cliptext, msg.extra.buf, msg.extra.len);
-		cliptext[msg.extra.len] = '\0';
-		xfree(msg.extra.buf);
-	} else {
-		cliptext = get_clipboard_text();
-		assert(strlen(cliptext) <= UINT32_MAX);
+	if (!from && !to) {
+		fprintf(stderr, "switching from master to master??\n");
+		return;
 	}
 
-	if (to) {
-		msg.type = MT_SETCLIPBOARD;
-		msg.extra.buf = cliptext;
-		msg.extra.len = strlen(cliptext);
-		send_message(to->sock, &msg);
-	} else
-		set_clipboard_text(cliptext);
-
-	xfree(cliptext);
+	if (from) {
+		msg = new_message(MT_GETCLIPBOARD);
+		enqueue_message(from, msg);
+	} else if (to) {
+		msg = new_message(MT_SETCLIPBOARD);
+		msg->extra.buf = get_clipboard_text();
+		msg->extra.len = strlen(msg->extra.buf);
+		assert(msg->extra.len <= UINT32_MAX);
+		enqueue_message(to, msg);
+	}
 }
 
 void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
 {
 	int i;
-	struct message msg = { .type = MT_KEYEVENT, .extra.len = 0, };
+	struct message* msg;
 
 	if (from) {
-		msg.keyevent.pressrel = PR_RELEASE;
 		for (i = 0; modkeys[i] != ET_null; i++) {
-			msg.keyevent.keycode = modkeys[i];
-			send_message(from->sock, &msg);
+			msg = new_message(MT_KEYEVENT);
+			msg->keyevent.pressrel = PR_RELEASE;
+			msg->keyevent.keycode = modkeys[i];
+			enqueue_message(from, msg);
 		}
 	}
 
 	if (to) {
-		msg.keyevent.pressrel = PR_PRESS;
 		for (i = 0; modkeys[i] != ET_null; i++) {
-			msg.keyevent.keycode = modkeys[i];
-			send_message(to->sock, &msg);
+			msg = new_message(MT_KEYEVENT);
+			msg->keyevent.pressrel = PR_PRESS;
+			msg->keyevent.keycode = modkeys[i];
+			enqueue_message(to, msg);
 		}
 	}
 }
 
 void send_keyevent(keycode_t kc, pressrel_t pr)
 {
-	struct message msg = {
-		.type = MT_KEYEVENT,
-		.keyevent.keycode = kc,
-		.keyevent.pressrel = pr,
-		.extra.len = 0,
-	};
+	struct message* msg;
 
-	if (active_remote)
-		send_message(active_remote->sock, &msg);
+	if (!active_remote)
+		return;
+
+	msg = new_message(MT_KEYEVENT);
+
+	msg->keyevent.keycode = kc;
+	msg->keyevent.pressrel = pr;
+
+	enqueue_message(active_remote, msg);
 }
 
 void send_moverel(int32_t dx, int32_t dy)
 {
-	struct message msg = {
-		.type = MT_MOVEREL,
-		.moverel.dx = dx,
-		.moverel.dy = dy,
-		.extra.len = 0,
-	};
+	struct message* msg;
 
-	if (active_remote)
-		send_message(active_remote->sock, &msg);
+	if (!active_remote)
+		return;
+
+	msg = new_message(MT_MOVEREL);
+
+	msg->moverel.dx = dx;
+	msg->moverel.dy = dy;
+
+	enqueue_message(active_remote, msg);
 }
 
 void send_clickevent(mousebutton_t button, pressrel_t pr)
 {
-	struct message msg = {
-		.type = MT_CLICKEVENT,
-		.clickevent.button = button,
-		.clickevent.pressrel = pr,
-		.extra.len = 0,
-	};
+	struct message* msg;
 
-	if (active_remote)
-		send_message(active_remote->sock, &msg);
+	if (!active_remote)
+		return;
+
+	msg = new_message(MT_CLICKEVENT);
+
+	msg->clickevent.button = button;
+	msg->clickevent.pressrel = pr;
+
+	enqueue_message(active_remote, msg);
 }
 
 static struct xypoint saved_master_mousepos;
@@ -483,22 +500,97 @@ static void bind_hotkeys(void)
 	}
 }
 
-static void handle_ready(struct remote* rmt)
+static void fail_remote(struct remote* rmt)
 {
+	fprintf(stderr, "misbehavior from remote '%s', disconnecting.\n", rmt->alias);
+	disconnect_remote(rmt, CS_FAILED);
+}
+
+static void read_rmtdata(struct remote* rmt)
+{
+	int status;
 	struct message msg;
-	if (receive_message(rmt->sock, &msg)) {
-		disconnect_remote(rmt, CS_FAILED);
+	struct message* msg2;
+
+	status = fill_msgbuf(rmt->sock, &rmt->recv_msgbuf);
+	if (!status)
+		return;
+
+	if (status < 0) {
+		fail_remote(rmt);
 		return;
 	}
 
-	if (msg.type != MT_READY || msg.ready.prot_vers != PROT_VERSION) {
-		disconnect_remote(rmt, CS_FAILED);
-		return;
+	parse_message(&rmt->recv_msgbuf, &msg);
+
+	switch (msg.type) {
+	case MT_READY:
+		if (rmt->state != CS_SETTINGUP) {
+			fail_remote(rmt);
+			break;
+		}
+		if (msg.ready.prot_vers != PROT_VERSION) {
+			fprintf(stderr, "remote '%s' reports unsupported protocol version %u\n",
+			        rmt->alias, msg.ready.prot_vers);
+			fail_remote(rmt);
+			break;
+		}
+		rmt->state = CS_CONNECTED;
+		fprintf(stderr, "Remote '%s' becomes ready...\n", rmt->alias);
+		break;
+
+	case MT_SETCLIPBOARD:
+		if (rmt->state != CS_CONNECTED) {
+			fprintf(stderr, "got unexpected SETCLIPBOARD from non-connected "
+			        "remote '%s', ignoring.\n", rmt->alias);
+			break;
+		}
+		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
+		if (active_remote) {
+			msg2 = new_message(MT_SETCLIPBOARD);
+			msg2->extra.buf = get_clipboard_text();
+			msg2->extra.len = strlen(msg2->extra.buf);
+			enqueue_message(active_remote, msg2);
+		}
+		break;
+
+	default:
+		fprintf(stderr, "unexpected type %u notification from '%s'\n",
+		        msg.type, rmt->alias);
+		fail_remote(rmt);
+		break;
 	}
 
-	rmt->state = CS_CONNECTED;
+	if (msg.extra.len)
+		xfree(msg.extra.buf);
+}
 
-	fprintf(stderr, "Remote %s becomes ready...\n", rmt->alias);
+static void write_rmtdata(struct remote* rmt)
+{
+	int status;
+	struct message* msg;
+
+	if (!rmt->send_msgbuf.msgbuf) {
+		assert(rmt->sendqueue.head);
+		msg = rmt->sendqueue.head;
+		rmt->sendqueue.head = msg->next;
+		if (!msg->next)
+			rmt->sendqueue.tail = NULL;
+		rmt->sendqueue.num_queued -= 1;
+		unparse_message(msg, &rmt->send_msgbuf);
+		xfree(msg->extra.buf);
+		xfree(msg);
+	}
+
+	status = drain_msgbuf(rmt->sock, &rmt->send_msgbuf);
+
+	if (status < 0)
+		fail_remote(rmt);
+}
+
+static inline int have_outbound_data(const struct remote* rmt)
+{
+	return rmt->send_msgbuf.msgbuf || rmt->sendqueue.head;
 }
 
 static inline void fdset_add(int fd, fd_set* set, int* nfds)
@@ -518,14 +610,9 @@ static void handle_fds(void)
 	FD_ZERO(&wfds);
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		switch (rmt->state) {
-		case CS_SETTINGUP:
-			fdset_add(rmt->sock, &rfds, &nfds);
-			break;
-
-		default:
-			break;
-		}
+		fdset_add(rmt->sock, &rfds, &nfds);
+		if (have_outbound_data(rmt))
+			fdset_add(rmt->sock, &wfds, &nfds);
 	}
 
 	fdset_add(platform_event_fd, &rfds, &nfds);
@@ -537,15 +624,10 @@ static void handle_fds(void)
 	}
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		switch (rmt->state) {
-		case CS_SETTINGUP:
-			if (FD_ISSET(rmt->sock, &rfds))
-				handle_ready(rmt);
-			break;
-
-		default:
-			break;
-		}
+		if (FD_ISSET(rmt->sock, &rfds))
+			read_rmtdata(rmt);
+		if (FD_ISSET(rmt->sock, &wfds))
+			write_rmtdata(rmt);
 	}
 
 	if (FD_ISSET(platform_event_fd, &rfds))

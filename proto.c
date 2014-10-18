@@ -1,4 +1,5 @@
 
+#include <errno.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 
@@ -20,8 +21,7 @@ static const size_t payload_sizes[] = {
 static size_t message_flatsize(const struct message* msg)
 {
 	assert(msg->type < ARR_LEN(payload_sizes));
-	return  sizeof(msgtype_t) /* message type */
-		+ sizeof(uint32_t) /* extra payload length */
+	return MSGHDR_SIZE /* header */
 		+ payload_sizes[msg->type] /* primary body */
 		+ msg->extra.len;  /* extra payload itself */
 }
@@ -132,70 +132,195 @@ static void unflatten_message(const void* buf, struct message* msg)
 	unflatteners[msg->type](buf, msg);
 }
 
+void unparse_message(const struct message* msg, struct partsend* ps)
+{
+	size_t plsize;
+	void* p;
+
+	assert(msg->type < ARR_LEN(payload_sizes));
+
+	plsize = payload_sizes[msg->type];
+
+	ps->msg_len = MSGHDR_SIZE + plsize + msg->extra.len;
+
+	ps->msgbuf = xmalloc(ps->msg_len);
+
+	p = ps->msgbuf;
+	*(msgtype_t*)p = htonl(msg->type);
+	p += sizeof(msgtype_t);
+	*(uint32_t*)p = htonl(msg->extra.len);
+	p += sizeof(uint32_t);
+
+	assert(p - ps->msgbuf == MSGHDR_SIZE);
+
+	flatten_message(msg, p);
+	p += plsize;
+
+	memcpy(p, msg->extra.buf, msg->extra.len);
+}
+
+int drain_msgbuf(int fd, struct partsend* ps)
+{
+	ssize_t status;
+
+	while (ps->bytes_sent < ps->msg_len) {
+		status = write(fd, ps->msgbuf + ps->bytes_sent,
+		               ps->msg_len - ps->bytes_sent);
+		if (status < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return 0;
+			else
+				return -errno;
+		}
+		ps->bytes_sent += status;
+	}
+
+	xfree(ps->msgbuf);
+	ps->msgbuf = NULL;
+	ps->msg_len = 0;
+	ps->bytes_sent = 0;
+
+	return 1;
+}
+
 int send_message(int fd, const struct message* msg)
 {
 	int status;
-	char msgbuf[1024];
-	void* p = msgbuf;
-	size_t fixsize = message_flatsize(msg) - msg->extra.len;
+	struct partsend ps = {
+		.msgbuf = NULL,
+		.msg_len = 0,
+		.bytes_sent = 0,
+	};
 
-	/* Temporary hack */
-	assert(fixsize <= sizeof(msgbuf));
+	unparse_message(msg, &ps);
 
-	*(msgtype_t*)p = htonl(msg->type);
-	p += sizeof(msgtype_t);
+	do {
+		status = drain_msgbuf(fd, &ps);
+		if (status < 0)
+			return status;
+	} while (!status);
 
-	assert(msg->extra.len <= UINT32_MAX);
-	*(uint32_t*)p = htonl(msg->extra.len & 0xffffffff);
-	p += sizeof(uint32_t);
-
-	flatten_message(msg, p);
-	p += payload_sizes[msg->type];
-
-	status = write_all(fd, msgbuf, fixsize);
-	if (!status && msg->extra.len)
-		status = write_all(fd, msg->extra.buf, msg->extra.len);
-	return status;
+	return 0;
 }
 
-int receive_message(int fd, struct message* msg)
-{
-	int status;
-	char msgbuf[1024];
-	size_t plsize;
-	void* p = msgbuf;
+/*
+ * Wire format:
+ *
+ *   message type (u32)
+ *   extra-buf length (u32)
+ *   main payload (length determined by type)
+ *   extra-buf payload
+ */
 
-	status = read_all(fd, p, sizeof(msgtype_t) + sizeof(uint32_t));
-	if (status)
-		return status;
+int fill_msgbuf(int fd, struct partrecv* pr)
+{
+	ssize_t status;
+	size_t msgsize, to_read;
+	msgtype_t type;
+
+	while (pr->bytes_recvd < MSGHDR_SIZE) {
+		status = read(fd, pr->hdrbuf + pr->bytes_recvd,
+		              MSGHDR_SIZE - pr->bytes_recvd);
+		if (status < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return 0;
+			else
+				return -errno;
+		} else if (status == 0) {
+			return -EINVAL;
+		}
+		pr->bytes_recvd += status;
+	}
+
+	type = ntohl(*(msgtype_t*)(pr->hdrbuf));
+	if (type >= ARR_LEN(payload_sizes))
+		return -EINVAL;
+	msgsize = MSGHDR_SIZE + payload_sizes[type]
+		+ ntohl(*(uint32_t*)(pr->hdrbuf + sizeof(msgtype_t)));
+
+	to_read = msgsize - pr->bytes_recvd;
+
+	if (!pr->plbuf) {
+		assert(to_read == msgsize - MSGHDR_SIZE);
+		pr->plbuf = xmalloc(msgsize - MSGHDR_SIZE);
+	}
+
+	while (to_read > 0) {
+		status = read(fd, pr->plbuf + (pr->bytes_recvd - MSGHDR_SIZE), to_read);
+		if (status < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				return 0;
+			else
+				return -errno;
+		} else if (status == 0) {
+			return -EINVAL;
+		}
+		pr->bytes_recvd += status;
+		to_read -= status;
+	}
+
+	return 1;
+}
+
+void parse_message(struct partrecv* pr, struct message* msg)
+{
+	size_t plsize;
+	void* p = pr->hdrbuf;
 
 	msg->type = ntohl(*(msgtype_t*)p);
 	p += sizeof(msgtype_t);
 	msg->extra.len = ntohl(*(uint32_t*)p);
 	p += sizeof(uint32_t);
 
+	assert((char*)p - pr->hdrbuf == MSGHDR_SIZE);
+
 	if (msg->type >= ARR_LEN(payload_sizes))
-		return -1;
+		abort();
 
 	plsize = payload_sizes[msg->type];
 
-	/* Temporary hack */
-	assert(plsize <= (sizeof(msgbuf) - ((char*)p - msgbuf)));
-
-	status = read_all(fd, p, plsize);
-	if (status)
-		return status;
-	unflatten_message(p, msg);
-	p += plsize;
+	unflatten_message(pr->plbuf, msg);
 
 	if (msg->extra.len) {
 		msg->extra.buf = xmalloc(msg->extra.len);
-		status = read_all(fd, msg->extra.buf, msg->extra.len);
-		if (status)
-			return status;
+		memcpy(msg->extra.buf, pr->plbuf + plsize, msg->extra.len);
 	} else {
 		msg->extra.buf = NULL;
 	}
 
+	xfree(pr->plbuf);
+	pr->plbuf = NULL;
+	pr->bytes_recvd = 0;
+}
+
+int receive_message(int fd, struct message* msg)
+{
+	int status;
+	struct partrecv pr = {
+		.bytes_recvd = 0,
+		.plbuf = NULL,
+	};
+
+	do {
+		status = fill_msgbuf(fd, &pr);
+		if (status < 0)
+			return status;
+	} while (!status);
+
+	parse_message(&pr, msg);
+	xfree(pr.plbuf);
+
 	return 0;
+}
+
+struct message* new_message(msgtype_t type)
+{
+	struct message* msg = xmalloc(sizeof(*msg));
+
+	msg->type = type;
+	msg->extra.buf = NULL;
+	msg->extra.len = 0;
+	msg->next = NULL;
+
+	return msg;
 }

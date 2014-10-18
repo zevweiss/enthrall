@@ -57,4 +57,6 @@ void send_clickevent(mousebutton_t button, pressrel_t pr);
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
 
+void set_fd_nonblock(int fd, int nb);
+
 #endif /* MISC_H */

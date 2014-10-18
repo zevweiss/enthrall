@@ -49,6 +49,13 @@ struct setclipboard_msg {
 
 
 /*
+ * How many bytes we will always unconditionally read at the start of a
+ * message (the initial fixed-size part).
+ */
+#define MSGHDR_SIZE (sizeof(msgtype_t) /* type */ \
+                     + sizeof(uint32_t) /* extra-buf size */)
+
+/*
  * Note that the on-the-wire message format (in order to reduce the number of
  * syscalls it takes to read a message) is ordered differently than the
  * members of this struct (which is arranged for in-memory ease of use).
@@ -73,9 +80,32 @@ struct message {
 		size_t len;
 		void* buf;
 	} extra;
+
+	/* For linking into a list (doesn't exist on-wire) */
+	struct message* next;
 };
+
+struct partrecv {
+	char hdrbuf[MSGHDR_SIZE];
+	void* plbuf;
+	size_t bytes_recvd;
+};
+
+struct partsend {
+	void* msgbuf;
+	size_t msg_len;
+	size_t bytes_sent;
+};
+
+struct message* new_message(msgtype_t type);
 
 int send_message(int fd, const struct message* msg);
 int receive_message(int fd, struct message* msg);
+
+int fill_msgbuf(int fd, struct partrecv* pr);
+void parse_message(struct partrecv* pr, struct message* msg);
+
+void unparse_message(const struct message* msg, struct partsend* ps);
+int drain_msgbuf(int fd, struct partsend* ps);
 
 #endif /* PROTO_H */

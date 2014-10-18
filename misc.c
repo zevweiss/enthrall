@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include "misc.h"
 
@@ -39,4 +40,24 @@ int read_all(int fd, void* buf, size_t len)
 	}
 
 	return 0;
+}
+
+void set_fd_nonblock(int fd, int nb)
+{
+	int flags = fcntl(fd, F_GETFL);
+
+	if (flags == -1) {
+		perror("fcntl");
+		abort();
+	}
+
+	if (nb)
+		flags |= O_NONBLOCK;
+	else
+		flags &= ~O_NONBLOCK;
+
+	if (fcntl(fd, F_SETFL, flags)) {
+		perror("fcntl");
+		abort();
+	}
 }
