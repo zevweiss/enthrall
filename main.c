@@ -27,11 +27,24 @@ char* default_remote_command;
 
 static int platform_event_fd;
 
+static void set_clipboard_from_buf(const void* buf, size_t len)
+{
+	char* tmp;
+
+	/*
+	 * extra intermediate malloc()ed area just to tack on the NUL
+	 * terminator here is a bit inefficient...
+	 */
+	tmp = xmalloc(len + 1);
+	memcpy(tmp, buf, len);
+	tmp[len] = '\0';
+	set_clipboard_text(tmp);
+	xfree(tmp);
+}
+
 static void handle_message(void)
 {
 	struct message msg, resp;
-	size_t cliplen;
-	char* cliptext;
 
 	if (receive_message(STDIN_FILENO, &msg))
 		TODO();
@@ -55,26 +68,16 @@ static void handle_message(void)
 		break;
 
 	case MT_GETCLIPBOARD:
-		cliptext = get_clipboard_text();
-		cliplen = strlen(cliptext);
-
-		/* Cap length at UINT32_MAX (size_t may be larger) */
-		cliplen = cliplen > UINT32_MAX ? UINT32_MAX : cliplen;
-
 		resp.type = MT_SETCLIPBOARD;
-		resp.setclipboard.length = cliplen;
+		resp.extra.buf = get_clipboard_text();
+		resp.extra.len = strlen(resp.extra.buf);
 		send_message(STDOUT_FILENO, &resp);
-		write_all(STDOUT_FILENO, cliptext, cliplen);
-
-		xfree(cliptext);
+		xfree(resp.extra.buf);
 		break;
 
 	case MT_SETCLIPBOARD:
-		cliptext = xmalloc(msg.setclipboard.length + 1);
-		read_all(STDIN_FILENO, cliptext, msg.setclipboard.length);
-		cliptext[msg.setclipboard.length] = '\0';
-		set_clipboard_text(cliptext);
-		xfree(cliptext);
+		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
+		xfree(msg.extra.buf);
 		break;
 
 	default:
@@ -88,6 +91,7 @@ static void server_mode(void)
 	struct message readymsg = {
 		.type = MT_READY,
 		{ .ready = { .prot_vers = PROT_VERSION, }, },
+		.extra.len = 0,
 	};
 
 	fclose(stderr);
@@ -305,6 +309,7 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 
 	if (from) {
 		msg.type = MT_GETCLIPBOARD;
+		msg.extra.len = 0;
 		send_message(from->sock, &msg);
 		receive_message(from->sock, &msg);
 		if (msg.type != MT_SETCLIPBOARD) {
@@ -312,9 +317,10 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 			        from->alias);
 			disconnect_remote(from, CS_FAILED);
 		}
-		cliptext = xmalloc(msg.setclipboard.length + 1);
-		read_all(from->sock, cliptext, msg.setclipboard.length);
-		cliptext[msg.setclipboard.length] = '\0';
+		cliptext = xmalloc(msg.extra.len + 1);
+		memcpy(cliptext, msg.extra.buf, msg.extra.len);
+		cliptext[msg.extra.len] = '\0';
+		xfree(msg.extra.buf);
 	} else {
 		cliptext = get_clipboard_text();
 		assert(strlen(cliptext) <= UINT32_MAX);
@@ -322,9 +328,9 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 
 	if (to) {
 		msg.type = MT_SETCLIPBOARD;
-		msg.setclipboard.length = strlen(cliptext);
+		msg.extra.buf = cliptext;
+		msg.extra.len = strlen(cliptext);
 		send_message(to->sock, &msg);
-		write_all(to->sock, cliptext, msg.setclipboard.length);
 	} else
 		set_clipboard_text(cliptext);
 
@@ -334,7 +340,7 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
 {
 	int i;
-	struct message msg = { .type = MT_KEYEVENT, };
+	struct message msg = { .type = MT_KEYEVENT, .extra.len = 0, };
 
 	if (from) {
 		msg.keyevent.pressrel = PR_RELEASE;
@@ -359,6 +365,7 @@ void send_keyevent(keycode_t kc, pressrel_t pr)
 		.type = MT_KEYEVENT,
 		.keyevent.keycode = kc,
 		.keyevent.pressrel = pr,
+		.extra.len = 0,
 	};
 
 	if (active_remote)
@@ -371,6 +378,7 @@ void send_moverel(int32_t dx, int32_t dy)
 		.type = MT_MOVEREL,
 		.moverel.dx = dx,
 		.moverel.dy = dy,
+		.extra.len = 0,
 	};
 
 	if (active_remote)
@@ -383,6 +391,7 @@ void send_clickevent(mousebutton_t button, pressrel_t pr)
 		.type = MT_CLICKEVENT,
 		.clickevent.button = button,
 		.clickevent.pressrel = pr,
+		.extra.len = 0,
 	};
 
 	if (active_remote)

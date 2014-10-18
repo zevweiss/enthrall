@@ -14,13 +14,16 @@ static const size_t payload_sizes[] = {
 	[MT_CLICKEVENT] = 2 * sizeof(uint32_t),
 	[MT_KEYEVENT] = 2 * sizeof(uint32_t),
 	[MT_GETCLIPBOARD] = 0,
-	[MT_SETCLIPBOARD] = sizeof(uint32_t),
+	[MT_SETCLIPBOARD] = 0,
 };
 
 static size_t message_flatsize(const struct message* msg)
 {
 	assert(msg->type < ARR_LEN(payload_sizes));
-	return sizeof(msgtype_t) + payload_sizes[msg->type];
+	return  sizeof(msgtype_t) /* message type */
+		+ sizeof(uint32_t) /* extra payload length */
+		+ payload_sizes[msg->type] /* primary body */
+		+ msg->extra.len;  /* extra payload itself */
 }
 
 static void flatten_ready(const struct message* msg, void* buf)
@@ -93,12 +96,10 @@ static void unflatten_getclipboard(const void* buf, struct message* msg)
 
 static void flatten_setclipboard(const struct message* msg, void* buf)
 {
-	*(uint32_t*)buf = htonl(msg->setclipboard.length);
 }
 
 static void unflatten_setclipboard(const void* buf, struct message* msg)
 {
-	msg->setclipboard.length = ntohl(*(uint32_t*)buf);
 }
 
 static void (*const flatteners[])(const struct message*, void*) = {
@@ -133,16 +134,28 @@ static void unflatten_message(const void* buf, struct message* msg)
 
 int send_message(int fd, const struct message* msg)
 {
+	int status;
 	char msgbuf[1024];
-	size_t msgsize = message_flatsize(msg);
+	void* p = msgbuf;
+	size_t fixsize = message_flatsize(msg) - msg->extra.len;
 
 	/* Temporary hack */
-	assert(msgsize <= sizeof(msgbuf));
+	assert(fixsize <= sizeof(msgbuf));
 
-	*(msgtype_t*)msgbuf = htonl(msg->type);
-	flatten_message(msg, msgbuf + sizeof(msgtype_t));
+	*(msgtype_t*)p = htonl(msg->type);
+	p += sizeof(msgtype_t);
 
-	return write_all(fd, msgbuf, msgsize);
+	assert(msg->extra.len <= UINT32_MAX);
+	*(uint32_t*)p = htonl(msg->extra.len & 0xffffffff);
+	p += sizeof(uint32_t);
+
+	flatten_message(msg, p);
+	p += payload_sizes[msg->type];
+
+	status = write_all(fd, msgbuf, fixsize);
+	if (!status && msg->extra.len)
+		status = write_all(fd, msg->extra.buf, msg->extra.len);
+	return status;
 }
 
 int receive_message(int fd, struct message* msg)
@@ -150,12 +163,16 @@ int receive_message(int fd, struct message* msg)
 	int status;
 	char msgbuf[1024];
 	size_t plsize;
+	void* p = msgbuf;
 
-	status = read_all(fd, &msg->type, sizeof(msgtype_t));
+	status = read_all(fd, p, sizeof(msgtype_t) + sizeof(uint32_t));
 	if (status)
 		return status;
 
-	msg->type = ntohl(msg->type);
+	msg->type = ntohl(*(msgtype_t*)p);
+	p += sizeof(msgtype_t);
+	msg->extra.len = ntohl(*(uint32_t*)p);
+	p += sizeof(uint32_t);
 
 	if (msg->type >= ARR_LEN(payload_sizes))
 		return -1;
@@ -163,13 +180,22 @@ int receive_message(int fd, struct message* msg)
 	plsize = payload_sizes[msg->type];
 
 	/* Temporary hack */
-	assert(plsize < sizeof(msgbuf));
+	assert(plsize <= (sizeof(msgbuf) - ((char*)p - msgbuf)));
 
-	status = read_all(fd, msgbuf, plsize);
+	status = read_all(fd, p, plsize);
 	if (status)
 		return status;
+	unflatten_message(p, msg);
+	p += plsize;
 
-	unflatten_message(msgbuf, msg);
+	if (msg->extra.len) {
+		msg->extra.buf = xmalloc(msg->extra.len);
+		status = read_all(fd, msg->extra.buf, msg->extra.len);
+		if (status)
+			return status;
+	} else {
+		msg->extra.buf = NULL;
+	}
 
 	return 0;
 }

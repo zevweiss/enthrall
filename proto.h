@@ -44,12 +44,20 @@ struct getclipboard_msg {
 };
 
 struct setclipboard_msg {
-	uint32_t length;
-	/* message is followed by a 'length'-byte payload */
+	/* message's "extra" buffer contains clipboard contents */
 };
 
+
+/*
+ * Note that the on-the-wire message format (in order to reduce the number of
+ * syscalls it takes to read a message) is ordered differently than the
+ * members of this struct (which is arranged for in-memory ease of use).
+ */
 struct message {
+	/* What type of message this is (tag for the union below) */
 	msgtype_t type;
+
+	/* Primary message payload */
 	union {
 		struct ready_msg ready;
 		struct shutdown_msg shutdown;
@@ -59,6 +67,12 @@ struct message {
 		struct getclipboard_msg getclipboard;
 		struct setclipboard_msg setclipboard;
 	};
+
+	/* Extra data accompanying message (e.g. clipboard contents) */
+	struct {
+		size_t len;
+		void* buf;
+	} extra;
 };
 
 int send_message(int fd, const struct message* msg);
