@@ -19,14 +19,6 @@ static const size_t payload_sizes[] = {
 	[MT_LOGMSG] = 0,
 };
 
-static size_t message_flatsize(const struct message* msg)
-{
-	assert(msg->type < ARR_LEN(payload_sizes));
-	return MSGHDR_SIZE /* header */
-		+ payload_sizes[msg->type] /* primary body */
-		+ msg->extra.len;  /* extra payload itself */
-}
-
 static void flatten_ready(const struct message* msg, void* buf)
 {
 	*(uint32_t*)buf = htonl(msg->ready.prot_vers);
