@@ -135,11 +135,14 @@ static void server_mode(void)
 
 static void exec_remote_shell(const struct remote* rmt)
 {
-	char* remote_shell = config->remote_shell ? config->remote_shell : "ssh";
+	int nargs;
 	char portbuf[32];
+	char* remote_shell = config->remote_shell ? config->remote_shell : "ssh";
 	char* argv[] = {
 		remote_shell,
 		"-oBatchMode=yes",
+		"-oServerAliveInterval=2",
+		"-oServerAliveCountMax=3",
 
 		/* placeholders */
 		NULL, /* -b */
@@ -153,7 +156,8 @@ static void exec_remote_shell(const struct remote* rmt)
 
 		NULL, /* argv terminator */
 	};
-	int nargs = 2;
+
+	for (nargs = 0; argv[nargs]; nargs++) /* just find first NULL entry */;
 
 	if (config->bind_address) {
 		argv[nargs++] = "-b";
