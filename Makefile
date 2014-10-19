@@ -18,6 +18,7 @@ else
 	PLATFORM = x11
 	CC = gcc
 	LIBS += -lX11 -lrt
+	CFLAGS += -D_GNU_SOURCE
 endif
 
 CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h

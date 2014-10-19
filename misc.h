@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <assert.h>
 
 #include "types.h"
@@ -42,6 +43,31 @@ static inline char* xstrdup(const char* str)
 		abort();
 	}
 	return s;
+}
+
+static inline char* xvasprintf(const char* fmt, va_list va)
+{
+	char* ret;
+	int status = vasprintf(&ret, fmt, va);
+
+	if (status < 0) {
+		perror("xvasprintf");
+		abort();
+	}
+
+	return ret;
+}
+
+static inline char* xasprintf(const char* fmt, ...)
+{
+	va_list va;
+	char* ret;
+
+	va_start(va, fmt);
+	ret = xvasprintf(fmt, va);
+	va_end(va);
+
+	return ret;
 }
 
 static inline void xfree(void* p)
