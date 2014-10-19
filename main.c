@@ -310,24 +310,27 @@ void disconnect_remote(struct remote* rmt, connstate_t state)
 	pid_t pid;
 	int status;
 
-	if (state == CS_FAILED)
-		elog("disconnecting failed remote '%s'\n", rmt->alias);
-
 	close(rmt->sock);
 	rmt->sock = -1;
 
 	if (rmt->sshpid > 0 && kill(rmt->sshpid, SIGTERM) && errno != ESRCH)
-		perror("failed to kill ssh");
+		perror("failed to kill remote shell");
 
 	pid = waitpid(rmt->sshpid, &status, 0);
 	if (pid != rmt->sshpid)
-		perror("wait() on ssh");
+		perror("wait() on remote shell");
 
 	rmt->sshpid = -1;
 
 	rmt->state = state;
 
 	/* FIXME: if (rmt == active_remote) { ... } */
+}
+
+static void fail_remote(struct remote* rmt, const char* reason)
+{
+	elog("disconnecting remote '%s': %s\n", rmt->alias, reason);
+	disconnect_remote(rmt, CS_FAILED);
 }
 
 #define MAX_SEND_BACKLOG 512
@@ -342,10 +345,8 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 		rmt->sendqueue.head = msg;
 	rmt->sendqueue.num_queued += 1;
 
-	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG) {
-		elog("remote '%s' exceeds send backlog, disconnecting.\n", rmt->alias);
-		disconnect_remote(rmt, CS_FAILED);
-	}
+	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG)
+		fail_remote(rmt, "send backlog exceeded");
 }
 
 void transfer_clipboard(struct remote* from, struct remote* to)
@@ -523,12 +524,6 @@ static void bind_hotkeys(void)
 	}
 }
 
-static void fail_remote(struct remote* rmt)
-{
-	elog("misbehavior from remote '%s', disconnecting.\n", rmt->alias);
-	disconnect_remote(rmt, CS_FAILED);
-}
-
 static void read_rmtdata(struct remote* rmt)
 {
 	int status, loglen;
@@ -541,7 +536,7 @@ static void read_rmtdata(struct remote* rmt)
 		return;
 
 	if (status < 0) {
-		fail_remote(rmt);
+		fail_remote(rmt, "failed to read valid message");
 		return;
 	}
 
@@ -550,13 +545,11 @@ static void read_rmtdata(struct remote* rmt)
 	switch (msg.type) {
 	case MT_READY:
 		if (rmt->state != CS_SETTINGUP) {
-			fail_remote(rmt);
+			fail_remote(rmt, "unexpected READY message");
 			break;
 		}
 		if (msg.ready.prot_vers != PROT_VERSION) {
-			elog("remote '%s' reports unsupported protocol version %u\n",
-			     rmt->alias, msg.ready.prot_vers);
-			fail_remote(rmt);
+			fail_remote(rmt, "unsupported protocol version");
 			break;
 		}
 		rmt->state = CS_CONNECTED;
@@ -586,9 +579,7 @@ static void read_rmtdata(struct remote* rmt)
 		break;
 
 	default:
-		elog("unexpected type %u notification from '%s'\n", msg.type,
-		     rmt->alias);
-		fail_remote(rmt);
+		fail_remote(rmt, "unexpected message type");
 		break;
 	}
 
@@ -616,7 +607,7 @@ static void write_rmtdata(struct remote* rmt)
 	status = drain_msgbuf(rmt->sock, &rmt->send_msgbuf);
 
 	if (status < 0)
-		fail_remote(rmt);
+		fail_remote(rmt, "failed to send message");
 }
 
 static inline int have_outbound_data(const struct remote* rmt)
