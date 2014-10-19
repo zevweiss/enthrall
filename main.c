@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <limits.h>
+#include <getopt.h>
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <sys/fcntl.h>
@@ -22,7 +23,7 @@ struct config* config;
 
 struct remote* active_remote = NULL;
 
-char* default_remote_command;
+char* progname;
 
 static int platform_event_fd;
 
@@ -177,7 +178,7 @@ static void exec_remote_shell(const struct remote* rmt)
 
 	argv[nargs++] = rmt->hostname;
 
-	argv[nargs++] = rmt->remotecmd ? rmt->remotecmd : default_remote_command;
+	argv[nargs++] = rmt->remotecmd ? rmt->remotecmd : progname;
 
 	assert(nargs < ARR_LEN(argv));
 
@@ -734,6 +735,11 @@ static void handle_fds(void)
 		process_events();
 }
 
+void usage(FILE* out)
+{
+	fprintf(out, "Usage: %s CONFIGFILE\n", progname);
+}
+
 int main(int argc, char** argv)
 {
 	int opt, status;
@@ -741,12 +747,19 @@ int main(int argc, char** argv)
 	struct config cfg;
 	struct remote* rmt;
 
-	default_remote_command = strrchr(argv[0], '/') + 1;
-	if (!default_remote_command)
-		default_remote_command = argv[0];
+	static const struct option options[] = {
+		{ "help", no_argument, NULL, 'h', },
+		{ NULL, 0, NULL, 0, },
+	};
 
-	while ((opt = getopt(argc, argv, "")) != -1) {
+	progname = strrchr(argv[0], '/') + 1;
+	progname = progname ? progname : argv[0];
+
+	while ((opt = getopt_long(argc, argv, "h", options, NULL)) != -1) {
 		switch (opt) {
+		case 'h':
+			usage(stdout);
+			exit(0);
 
 		default:
 			elog("Unrecognized option: %c\n", opt);
@@ -757,11 +770,22 @@ int main(int argc, char** argv)
 	argc -= optind;
 	argv += optind;
 
-	if (!argc)
+	if (!argc) {
+		/*
+		 * If we've been properly invoked as a remote, stdin and
+		 * stdout should not be TTYs...if they are, somebody's just
+		 * run it without an argument not knowing any better and
+		 * should get an error.
+		 */
+		if (isatty(STDIN_FILENO) || isatty(STDOUT_FILENO)) {
+			usage(stderr);
+			exit(1);
+		}
+
 		opmode = REMOTE;
-	else if (argc == 1)
+	} else if (argc == 1) {
 		opmode = MASTER;
-	else {
+	} else {
 		elog("excess arguments\n");
 		exit(1);
 	}
