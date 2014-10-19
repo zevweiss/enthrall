@@ -7,6 +7,7 @@
 #include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
+#include <X11/XKBlib.h>
 
 #include "types.h"
 #include "misc.h"
@@ -161,7 +162,7 @@ keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
 		for (bit = 0; bit < CHAR_BIT; bit++) {
 			if (ctx->keymap_state[i] & (1 << bit)) {
 				kc = (i * CHAR_BIT) + bit;
-				sym = XKeycodeToKeysym(xdisp, kc, 0);
+				sym = XkbKeycodeToKeysym(xdisp, kc, 0, 0);
 				if (!IsModifierKey(sym))
 					continue;
 				etk = keysym_to_keycode(sym);
