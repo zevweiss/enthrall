@@ -36,6 +36,7 @@ integer		[-]?[0-9]+
 "hotkey"	return KW_HOTKEY;
 "switch"	return KW_SWITCH;
 "switch-to"	return KW_SWITCHTO;
+"reconnect"	return KW_RECONNECT;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;

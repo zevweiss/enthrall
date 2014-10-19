@@ -44,6 +44,7 @@ typedef enum {
 	CS_NEW = 0,
 	CS_SETTINGUP,
 	CS_FAILED,
+	CS_PERMFAILED,
 	CS_CONNECTED,
 	CS_DISCONNECTED,
 } connstate_t;
@@ -96,6 +97,15 @@ struct remote {
 	pid_t sshpid;
 	int sock;
 
+	/*
+	 * How many times (since the last successful one) this remote's
+	 * connection has failed.
+	 */
+	int failcount;
+
+	/* When we'll next make a reconnection attempt (absolute microseconds) */
+	uint64_t next_reconnect_time;
+
 	/* For buffering partial inbound & outbound messages */
 	struct partrecv recv_msgbuf;
 	struct partsend send_msgbuf;
@@ -112,6 +122,7 @@ struct remote {
 typedef enum {
 	AT_SWITCH,
 	AT_SWITCHTO,
+	AT_RECONNECT,
 } actiontype_t;
 
 struct action {

@@ -305,7 +305,7 @@ static void setup_remote(struct remote* rmt)
 	}
 }
 
-void disconnect_remote(struct remote* rmt, connstate_t state)
+static void disconnect_remote(struct remote* rmt)
 {
 	pid_t pid;
 	int status;
@@ -313,27 +313,59 @@ void disconnect_remote(struct remote* rmt, connstate_t state)
 	close(rmt->sock);
 	rmt->sock = -1;
 
-	if (rmt->sshpid > 0 && kill(rmt->sshpid, SIGTERM) && errno != ESRCH)
-		perror("failed to kill remote shell");
-
-	pid = waitpid(rmt->sshpid, &status, 0);
-	if (pid != rmt->sshpid)
-		perror("wait() on remote shell");
+	/*
+	 * A note on signal choice here: initially this used SIGTERM (which
+	 * seemed more appropriate), but it appears ssh has a tendency to
+	 * (under certain connection-failure conditions) block for long
+	 * periods of time with SIGTERM blocked/ignored, meaning we end up
+	 * blocking in wait().  So instead we just skip straight to the big
+	 * gun here.  I don't think it's likely to have any terribly important
+	 * cleanup to do anyway (at least in this case).
+	 */
+	if (rmt->sshpid > 0) {
+		if (kill(rmt->sshpid, SIGKILL) && errno != ESRCH)
+			perror("failed to kill remote shell");
+		pid = waitpid(rmt->sshpid, &status, 0);
+		if (pid != rmt->sshpid)
+			perror("wait() on remote shell");
+	}
 
 	rmt->sshpid = -1;
-
-	rmt->state = state;
 
 	/* FIXME: if (rmt == active_remote) { ... } */
 }
 
+#define MAX_RECONNECT_INTERVAL (30 * 1000 * 1000)
+#define MAX_RECONNECT_ATTEMPTS 10
+
 static void fail_remote(struct remote* rmt, const char* reason)
 {
+	uint64_t tmp, lshift;
+
 	elog("disconnecting remote '%s': %s\n", rmt->alias, reason);
-	disconnect_remote(rmt, CS_FAILED);
+	disconnect_remote(rmt);
+	rmt->failcount += 1;
+
+	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
+		elog("remote '%s' exceeds failure limits, permfailing.\n", rmt->alias);
+		rmt->state = CS_PERMFAILED;
+		return;
+	}
+
+	rmt->state = CS_FAILED;
+
+	/* 0.5s, 1s, 2s, 4s, 8s...capped at MAX_RECONNECT_INTERVAL */
+	lshift = rmt->failcount - 1;
+	if (lshift > (CHAR_BIT * sizeof(uint64_t) - 1))
+		lshift = (CHAR_BIT * sizeof(uint64_t)) - 1;
+	tmp = (1ULL << rmt->failcount) * 500 * 1000;
+	if (tmp > MAX_RECONNECT_INTERVAL)
+		tmp = MAX_RECONNECT_INTERVAL;
+
+	rmt->next_reconnect_time = get_microtime() + tmp;
 }
 
-#define MAX_SEND_BACKLOG 512
+#define MAX_SEND_BACKLOG 64
 
 static void enqueue_message(struct remote* rmt, struct message* msg)
 {
@@ -492,6 +524,8 @@ static void switch_to_neighbor(direction_t dir, keycode_t* modkeys)
 
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
+	struct remote* rmt;
+	uint64_t now_us;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
@@ -502,6 +536,16 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 
 	case AT_SWITCHTO:
 		switch_to_node(&a->node, modkeys);
+		break;
+
+	case AT_RECONNECT:
+		now_us = get_microtime();
+		for (rmt = config->remotes; rmt; rmt = rmt->next) {
+			if (rmt->state == CS_PERMFAILED)
+				rmt->state = CS_FAILED;
+			rmt->failcount = 0;
+			rmt->next_reconnect_time = now_us;
+		}
 		break;
 
 	default:
@@ -553,7 +597,8 @@ static void read_rmtdata(struct remote* rmt)
 			break;
 		}
 		rmt->state = CS_CONNECTED;
-		elog("Remote '%s' becomes ready...\n", rmt->alias);
+		rmt->failcount = 0;
+		elog("remote '%s' becomes ready...\n", rmt->alias);
 		break;
 
 	case MT_SETCLIPBOARD:
@@ -627,29 +672,58 @@ static void handle_fds(void)
 	int status, nfds = 0;
 	fd_set rfds, wfds;
 	struct remote* rmt;
+	struct timeval recon_wait;
+	struct timeval* sel_wait;
+	uint64_t maxwait_us, now_us, next_reconnect_time = UINT64_MAX;
 
 	FD_ZERO(&rfds);
 	FD_ZERO(&wfds);
 
+	now_us = get_microtime();
+
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		fdset_add(rmt->sock, &rfds, &nfds);
-		if (have_outbound_data(rmt))
+		if (rmt->state == CS_FAILED) {
+			if (rmt->next_reconnect_time < now_us)
+				setup_remote(rmt);
+			else if (rmt->next_reconnect_time < next_reconnect_time)
+				next_reconnect_time = rmt->next_reconnect_time;
+		}
+
+		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP)
+			fdset_add(rmt->sock, &rfds, &nfds);
+
+		if (rmt->state == CS_CONNECTED && have_outbound_data(rmt))
 			fdset_add(rmt->sock, &wfds, &nfds);
 	}
 
 	fdset_add(platform_event_fd, &rfds, &nfds);
 
-	status = select(nfds, &rfds, &wfds, NULL, NULL);
+	if (next_reconnect_time != UINT64_MAX) {
+		maxwait_us = next_reconnect_time - now_us;
+		recon_wait.tv_sec = maxwait_us / 1000000;
+		recon_wait.tv_usec = maxwait_us % 1000000;
+		sel_wait = &recon_wait;
+	} else {
+		sel_wait = NULL;
+	}
+
+	status = select(nfds, &rfds, &wfds, NULL, sel_wait);
 	if (status < 0) {
 		perror("select");
 		exit(1);
 	}
 
+	now_us = get_microtime();
+
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		if (FD_ISSET(rmt->sock, &rfds))
-			read_rmtdata(rmt);
-		if (FD_ISSET(rmt->sock, &wfds))
-			write_rmtdata(rmt);
+		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us) {
+			setup_remote(rmt);
+		} else {
+			if (FD_ISSET(rmt->sock, &rfds))
+				read_rmtdata(rmt);
+			if (FD_ISSET(rmt->sock, &wfds))
+				write_rmtdata(rmt);
+		}
 	}
 
 	if (FD_ISSET(platform_event_fd, &rfds))
