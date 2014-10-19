@@ -14,6 +14,7 @@ enum {
 	MT_KEYEVENT,
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
+	MT_LOGMSG,
 };
 
 typedef uint32_t msgtype_t;
@@ -47,6 +48,9 @@ struct setclipboard_msg {
 	/* message's "extra" buffer contains clipboard contents */
 };
 
+struct logmsg_msg {
+	/* "extra" buffer has string to be logged */
+};
 
 /*
  * How many bytes we will always unconditionally read at the start of a
@@ -73,6 +77,7 @@ struct message {
 		struct keyevent_msg keyevent;
 		struct getclipboard_msg getclipboard;
 		struct setclipboard_msg setclipboard;
+		struct logmsg_msg logmsg;
 	};
 
 	/* Extra data accompanying message (e.g. clipboard contents) */

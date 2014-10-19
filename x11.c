@@ -208,26 +208,26 @@ static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
 
 		sym = XStringToKeysym(tmp);
 		if (sym == NoSymbol) {
-			fprintf(stderr, "Invalid key: '%s'\n", tmp);
+			elog("Invalid key: '%s'\n", tmp);
 			status = -1;
 			goto out;
 		}
 
 		if (!IsModifierKey(sym)) {
 			if (*kc) {
-				fprintf(stderr, "Invalid hotkey '%s': multiple "
-				        "non-modifier keys\n", ks);
+				elog("Invalid hotkey '%s': multiple non-modifier "
+				     "keys\n", ks);
 				status = -1;
 				goto out;
 			}
 			*kc = XKeysymToKeycode(xdisp, sym);
 			if (!*kc) {
-				fprintf(stderr, "No keycode for keysym '%s'\n", tmp);
+				elog("No keycode for keysym '%s'\n", tmp);
 				status = -1;
 				goto out;
 			}
 		} else {
-			fprintf(stderr, "'%s' is not a valid hotkey key\n", tmp);
+			elog("'%s' is not a valid hotkey key\n", tmp);
 			status = -1;
 			goto out;
 		}
@@ -265,8 +265,7 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	kev.state = modmask;
 
 	if (find_hotkey(&kev)) {
-		fprintf(stderr, "hotkey '%s' conflicts with an existing hotkey binding\n",
-		        keystr);
+		elog("hotkey '%s' conflicts with an existing hotkey binding\n", keystr);
 		return -1;
 	}
 
@@ -292,7 +291,7 @@ int platform_init(void)
 
 	xdisp = XOpenDisplay(NULL);
 	if (!xdisp) {
-		fprintf(stderr, "X11 init: failed to open display\n");
+		elog("X11 init: failed to open display\n");
 		return -1;
 	}
 
@@ -350,7 +349,7 @@ struct xypoint get_mousepos(void)
 	                              &tmp_mask);
 
 	if (!onscreen) {
-		fprintf(stderr, "X11 pointer not on screen?\n");
+		elog("X11 pointer not on screen?\n");
 		abort();
 	}
 
@@ -374,12 +373,12 @@ void move_mousepos(int32_t dx, int32_t dy)
 
 void do_clickevent(mousebutton_t button, pressrel_t pr)
 {
-	fprintf(stderr, "x11 clickevent not yet implemented\n");
+	elog("x11 clickevent not yet implemented\n");
 }
 
 void do_keyevent(keycode_t key, pressrel_t pr)
 {
-	fprintf(stderr, "x11 keyevent not yet implemented\n");
+	elog("x11 keyevent not yet implemented\n");
 }
 
 static inline const char* grab_failure_message(int status)
@@ -399,8 +398,7 @@ int grab_inputs(void)
 	int status = XGrabKeyboard(xdisp, xrootwin, False, GrabModeAsync,
 	                           GrabModeAsync, CurrentTime);
 	if (status) {
-		fprintf(stderr, "Failed to grab keyboard: %s",
-		        grab_failure_message(status));
+		elog("Failed to grab keyboard: %s", grab_failure_message(status));
 		return status;
 	}
 
@@ -409,8 +407,7 @@ int grab_inputs(void)
 
 	if (status) {
 		XUngrabKeyboard(xdisp, CurrentTime);
-		fprintf(stderr, "Failed to grab pointer: %s",
-		        grab_failure_message(status));
+		elog("Failed to grab pointer: %s", grab_failure_message(status));
 		return status;
 	}
 
@@ -484,8 +481,8 @@ char* get_clipboard_text(void)
 	for (;;) {
 		get_xevent(&ev);
 		if (ev.type != SelectionNotify) {
-			fprintf(stderr, "dropping type %d event while awaiting selection...\n",
-			        ev.type);
+			elog("dropping type %d event while awaiting selection...\n",
+			     ev.type);
 			continue;
 		}
 
@@ -493,13 +490,13 @@ char* get_clipboard_text(void)
 			return xstrdup("");
 
 		if (ev.xselection.selection != ET_XSELECTION)
-			fprintf(stderr, "unexpected selection in SelectionNotify event\n");
+			elog("unexpected selection in SelectionNotify event\n");
 		if (ev.xselection.property != et_selection_data)
-			fprintf(stderr, "unexpected property in SelectionNotify event\n");
+			elog("unexpected property in SelectionNotify event\n");
 		if (ev.xselection.requestor != xwin)
-			fprintf(stderr, "unexpected requestor in SelectionNotify event\n");
+			elog("unexpected requestor in SelectionNotify event\n");
 		if (ev.xselection.target != XA_STRING)
-			fprintf(stderr, "unexpected target in SelectionNotify event\n");
+			elog("unexpected target in SelectionNotify event\n");
 
 		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
 		                   ev.xselection.property, 0, (1L << 24), True,
@@ -507,13 +504,13 @@ char* get_clipboard_text(void)
 		                   &bytes_remaining, &prop);
 
 		if (proptype != XA_STRING && proptype != utf8_string_atom)
-			fprintf(stderr, "selection window property has unexpected type\n");
+			elog("selection window property has unexpected type\n");
 		if (bytes_remaining)
-			fprintf(stderr, "%lu bytes remaining of selection window property\n",
+			elog("%lu bytes remaining of selection window property\n",
 			        bytes_remaining);
 		if (propformat != 8) {
-			fprintf(stderr, "selection window property has unexpected format (%d)\n",
-			        propformat);
+			elog("selection window property has unexpected format (%d)\n",
+			     propformat);
 			return xstrdup("");
 		}
 
@@ -536,7 +533,7 @@ int set_clipboard_text(const char* text)
 	XSetSelectionOwner(xdisp, ET_XSELECTION, xwin, last_xevent_time);
 
 	if (XGetSelectionOwner(xdisp, ET_XSELECTION) != xwin) {
-		fprintf(stderr, "failed to take ownership of X selection\n");
+		elog("failed to take ownership of X selection\n");
 		return -1;
 	}
 
@@ -590,7 +587,7 @@ static void handle_selection_request(const XSelectionRequestEvent* req)
 
 	/* Acknowledge that the transfer has been made (or failed) */
 	if (!send_selection_notify(req, property))
-		fprintf(stderr, "Failed to send SelectionNotify to requestor\n");
+		elog("Failed to send SelectionNotify to requestor\n");
 }
 
 static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
@@ -599,7 +596,7 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	keycode_t kc;
 
 	if (!active_remote) {
-		fprintf(stderr, "keyevent with no active remote\n");
+		elog("keyevent with no active remote\n");
 		return;
 	}
 
@@ -607,8 +604,7 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	kc = keysym_to_keycode(sym);
 
 	if (kc == ET_null) {
-		fprintf(stderr, "No mapping for keysym %lu (%s)\n", sym,
-		        XKeysymToString(sym));
+		elog("No mapping for keysym %lu (%s)\n", sym, XKeysymToString(sym));
 		return;
 	}
 
@@ -667,11 +663,11 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case SelectionNotify:
-		fprintf(stderr, "unexpected SelectionNotify event\n");
+		elog("unexpected SelectionNotify event\n");
 		break;
 
 	default:
-		fprintf(stderr, "unexpected XEvent type: %d\n", ev->type);
+		elog("unexpected XEvent type: %d\n", ev->type);
 		break;
 	}
 }

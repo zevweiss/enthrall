@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <limits.h>
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <sys/fcntl.h>
@@ -17,8 +18,6 @@
 
 #include "cfg-parse.tab.h"
 
-#define TODO() do { fprintf(stderr, "%s:%d: TODO\n", __FILE__, __LINE__); abort(); } while (0)
-
 struct config* config;
 
 struct remote* active_remote = NULL;
@@ -26,6 +25,29 @@ struct remote* active_remote = NULL;
 char* default_remote_command;
 
 static int platform_event_fd;
+
+enum {
+	MASTER,
+	REMOTE,
+} opmode;
+
+void elog(const char* fmt, ...)
+{
+	va_list va;
+	struct message msg;
+
+	va_start(va, fmt);
+	if (opmode == MASTER) {
+		vfprintf(stderr, fmt, va);
+	} else {
+		msg.type = MT_LOGMSG;
+		msg.extra.buf = xvasprintf(fmt, va);
+		msg.extra.len = strlen(msg.extra.buf);
+		send_message(STDOUT_FILENO, &msg);
+		xfree(msg.extra.buf);
+	}
+	va_end(va);
+}
 
 static void set_clipboard_from_buf(const void* buf, size_t len)
 {
@@ -46,8 +68,10 @@ static void handle_message(void)
 {
 	struct message msg, resp;
 
-	if (receive_message(STDIN_FILENO, &msg))
-		TODO();
+	if (receive_message(STDIN_FILENO, &msg)) {
+		elog("receive_message() failed\n");
+		exit(1);
+	}
 
 	switch (msg.type) {
 	case MT_SHUTDOWN:
@@ -77,33 +101,33 @@ static void handle_message(void)
 
 	case MT_SETCLIPBOARD:
 		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
-		xfree(msg.extra.buf);
 		break;
 
 	default:
-		TODO();
+		elog("unhandled message type: %u\n", msg.type);
+		exit(1);
 	}
+
+	xfree(msg.extra.buf);
 }
 
 static void server_mode(void)
 {
-	int errfd;
 	struct message readymsg = {
 		.type = MT_READY,
 		{ .ready = { .prot_vers = PROT_VERSION, }, },
 		.extra.len = 0,
 	};
 
-	fclose(stderr);
-	if ((errfd = open("/tmp/enthrall.err", O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0
-	    || dup2(errfd, STDERR_FILENO) < 0
-	    || !(stderr = fdopen(errfd, "w")))
-		abort();
-	if (setvbuf(stderr, NULL, _IONBF, 0))
-		abort();
-
-	if (send_message(STDOUT_FILENO, &readymsg))
-		TODO();
+	if (send_message(STDOUT_FILENO, &readymsg)) {
+		/*
+		 * Seems unlikely that sending a log message is going to work
+		 * if sending the ready message didn't, but I guess we might
+		 * as well try...
+		 */
+		elog("failed to send ready message\n");
+		exit(1);
+	}
 
 	for (;;)
 		handle_message();
@@ -183,7 +207,7 @@ static void resolve_noderef(struct noderef* n)
 	if (n->type == NT_REMOTE_TMPNAME) {
 		rmt = find_remote(n->name);
 		if (!rmt) {
-			fprintf(stderr, "No such remote: '%s'\n", n->name);
+			elog("No such remote: '%s'\n", n->name);
 			exit(1);
 		}
 		n->type = NT_REMOTE;
@@ -229,7 +253,7 @@ static void check_remotes(void)
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		if (!rmt->reachable)
-			fprintf(stderr, "Warning: remote '%s' is not reachable\n", rmt->alias);
+			elog("Warning: remote '%s' is not reachable\n", rmt->alias);
 
 		num_neighbors = 0;
 		for_each_direction (dir) {
@@ -238,7 +262,7 @@ static void check_remotes(void)
 		}
 
 		if (!num_neighbors)
-			fprintf(stderr, "Warning: remote '%s' has no neighbors\n", rmt->alias);
+			elog("Warning: remote '%s' has no neighbors\n", rmt->alias);
 	}
 }
 
@@ -287,7 +311,7 @@ void disconnect_remote(struct remote* rmt, connstate_t state)
 	int status;
 
 	if (state == CS_FAILED)
-		fprintf(stderr, "disconnecting failed remote '%s'\n", rmt->alias);
+		elog("disconnecting failed remote '%s'\n", rmt->alias);
 
 	close(rmt->sock);
 	rmt->sock = -1;
@@ -319,8 +343,7 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 	rmt->sendqueue.num_queued += 1;
 
 	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG) {
-		fprintf(stderr, "remote '%s' exceeds send backlog, disconnecting.\n",
-		        rmt->alias);
+		elog("remote '%s' exceeds send backlog, disconnecting.\n", rmt->alias);
 		disconnect_remote(rmt, CS_FAILED);
 	}
 }
@@ -330,7 +353,7 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 	struct message* msg;
 
 	if (!from && !to) {
-		fprintf(stderr, "switching from master to master??\n");
+		elog("switching from master to master??\n");
 		return;
 	}
 
@@ -432,14 +455,14 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 	case NT_REMOTE:
 		switch_to = n->node;
 		if (switch_to->state != CS_CONNECTED) {
-			fprintf(stderr, "remote '%s' not connected, can't switch to\n",
-			        switch_to->alias);
+			elog("remote '%s' not connected, can't switch to\n",
+			     switch_to->alias);
 			return;
 		}
 		break;
 
 	default:
-		fprintf(stderr, "unexpected neighbor type %d\n", n->type);
+		elog("unexpected neighbor type %d\n", n->type);
 		return;
 	}
 
@@ -481,7 +504,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	default:
-		fprintf(stderr, "unknown action type %d\n", a->type);
+		elog("unknown action type %d\n", a->type);
 		break;
 	}
 
@@ -496,19 +519,20 @@ static void bind_hotkeys(void)
 		if (k->action.type == AT_SWITCHTO)
 			resolve_noderef(&k->action.node);
 		if (bind_hotkey(k->key_string, action_cb, &k->action))
-			fprintf(stderr, "Failed to bind hotkey %s\n", k->key_string);
+			elog("Failed to bind hotkey %s\n", k->key_string);
 	}
 }
 
 static void fail_remote(struct remote* rmt)
 {
-	fprintf(stderr, "misbehavior from remote '%s', disconnecting.\n", rmt->alias);
+	elog("misbehavior from remote '%s', disconnecting.\n", rmt->alias);
 	disconnect_remote(rmt, CS_FAILED);
 }
 
 static void read_rmtdata(struct remote* rmt)
 {
-	int status;
+	int status, loglen;
+	char* logmsg;
 	struct message msg;
 	struct message* msg2;
 
@@ -530,19 +554,19 @@ static void read_rmtdata(struct remote* rmt)
 			break;
 		}
 		if (msg.ready.prot_vers != PROT_VERSION) {
-			fprintf(stderr, "remote '%s' reports unsupported protocol version %u\n",
-			        rmt->alias, msg.ready.prot_vers);
+			elog("remote '%s' reports unsupported protocol version %u\n",
+			     rmt->alias, msg.ready.prot_vers);
 			fail_remote(rmt);
 			break;
 		}
 		rmt->state = CS_CONNECTED;
-		fprintf(stderr, "Remote '%s' becomes ready...\n", rmt->alias);
+		elog("Remote '%s' becomes ready...\n", rmt->alias);
 		break;
 
 	case MT_SETCLIPBOARD:
 		if (rmt->state != CS_CONNECTED) {
-			fprintf(stderr, "got unexpected SETCLIPBOARD from non-connected "
-			        "remote '%s', ignoring.\n", rmt->alias);
+			elog("got unexpected SETCLIPBOARD from non-connected "
+			     "remote '%s', ignoring.\n", rmt->alias);
 			break;
 		}
 		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
@@ -554,9 +578,16 @@ static void read_rmtdata(struct remote* rmt)
 		}
 		break;
 
+	case MT_LOGMSG:
+		loglen = msg.extra.len > INT_MAX ? INT_MAX : msg.extra.len;
+		logmsg = msg.extra.buf;
+		elog("%s: %.*s%s", rmt->alias, loglen, logmsg,
+		     logmsg[msg.extra.len-1] == '\n' ? "" : "\n");
+		break;
+
 	default:
-		fprintf(stderr, "unexpected type %u notification from '%s'\n",
-		        msg.type, rmt->alias);
+		elog("unexpected type %u notification from '%s'\n", msg.type,
+		     rmt->alias);
 		fail_remote(rmt);
 		break;
 	}
@@ -649,7 +680,7 @@ int main(int argc, char** argv)
 		switch (opt) {
 
 		default:
-			fprintf(stderr, "Unrecognized option: %c\n", opt);
+			elog("Unrecognized option: %c\n", opt);
 			exit(1);
 		}
 	}
@@ -657,23 +688,29 @@ int main(int argc, char** argv)
 	argc -= optind;
 	argv += optind;
 
-	platform_event_fd = platform_init();
-	if (platform_event_fd < 0) {
-		fprintf(stderr, "platform_init failed\n");
+	if (!argc)
+		opmode = REMOTE;
+	else if (argc == 1)
+		opmode = MASTER;
+	else {
+		elog("excess arguments\n");
 		exit(1);
 	}
 
-	if (!argc)
-		server_mode();
-	else if (argc == 1) {
-		memset(&cfg, 0, sizeof(cfg));
-		if (parse_cfg(argv[0], &cfg))
-			exit(1);
-		config = &cfg;
-	} else {
-		fprintf(stderr, "excess arguments\n");
+	platform_event_fd = platform_init();
+	if (platform_event_fd < 0) {
+		elog("platform_init failed\n");
 		exit(1);
 	}
+
+	if (opmode == REMOTE) {
+		server_mode();
+	}
+
+	memset(&cfg, 0, sizeof(cfg));
+	if (parse_cfg(argv[0], &cfg))
+		exit(1);
+	config = &cfg;
 
 	check_remotes();
 	bind_hotkeys();

@@ -16,6 +16,7 @@ static const size_t payload_sizes[] = {
 	[MT_KEYEVENT] = 2 * sizeof(uint32_t),
 	[MT_GETCLIPBOARD] = 0,
 	[MT_SETCLIPBOARD] = 0,
+	[MT_LOGMSG] = 0,
 };
 
 static size_t message_flatsize(const struct message* msg)
@@ -102,6 +103,14 @@ static void unflatten_setclipboard(const void* buf, struct message* msg)
 {
 }
 
+static void flatten_logmsg(const struct message* msg, void* buf)
+{
+}
+
+static void unflatten_logmsg(const void* buf, struct message* msg)
+{
+}
+
 static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_READY] = flatten_ready,
 	[MT_SHUTDOWN] = flatten_shutdown,
@@ -110,6 +119,7 @@ static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_KEYEVENT] = flatten_keyevent,
 	[MT_GETCLIPBOARD] = flatten_getclipboard,
 	[MT_SETCLIPBOARD] = flatten_setclipboard,
+	[MT_LOGMSG] = flatten_logmsg,
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
@@ -120,6 +130,7 @@ static void (*const unflatteners[])(const void*, struct message*) = {
 	[MT_KEYEVENT] = unflatten_keyevent,
 	[MT_GETCLIPBOARD] = unflatten_getclipboard,
 	[MT_SETCLIPBOARD] = unflatten_setclipboard,
+	[MT_LOGMSG] = unflatten_logmsg,
 };
 
 static void flatten_message(const struct message* msg, void* buf)

@@ -59,8 +59,7 @@ int platform_init(void)
 
 	kr = mach_timebase_info(&mach_timebase);
 	if (kr != KERN_SUCCESS) {
-		fprintf(stderr, "mach_timebase_info() failed: %s\n",
-		        mach_error_string(kr));
+		elog("mach_timebase_info() failed: %s\n", mach_error_string(kr));
 		return -1;
 	}
 
@@ -71,13 +70,12 @@ int platform_init(void)
 	cgerr = CGGetActiveDisplayList(ARR_LEN(active_displays), active_displays,
 	                               &num_active_displays);
 	if (cgerr) {
-		fprintf(stderr, "CGGetActiveDisplayList() failed (%d)\n", cgerr);
+		elog("CGGetActiveDisplayList() failed (%d)\n", cgerr);
 		return -1;
 	}
 
 	if (num_active_displays != 1) {
-		fprintf(stderr, "Support for num_displays != 1 NYI (have %u)\n",
-		        num_active_displays);
+		elog("Support for num_displays != 1 NYI (have %u)\n", num_active_displays);
 		return -1;
 	}
 
@@ -92,7 +90,7 @@ int platform_init(void)
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardCreate() failed (%d)\n", status);
+		elog("PasteboardCreate() failed (%d)\n", status);
 		return -1;
 	}
 
@@ -106,13 +104,13 @@ void platform_exit(void)
 
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 {
-	fprintf(stderr, "OSX bind_hotkey() not yet implemented\n");
+	elog("OSX bind_hotkey() not yet implemented\n");
 	return 1;
 }
 
 keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
 {
-	fprintf(stderr, "OSX get_hotkey_modifiers() not yet implemented\n");
+	elog("OSX get_hotkey_modifiers() not yet implemented\n");
 	return NULL;
 }
 
@@ -125,7 +123,7 @@ uint64_t get_microtime(void)
 static inline uint32_t cgfloat_to_u32(CGFloat f)
 {
 	if (f > UINT32_MAX || f < 0) {
-		fprintf(stderr, "out-of-range CGFloat: %g\n", f);
+		elog("out-of-range CGFloat: %g\n", f);
 		abort();
 	}
 
@@ -138,7 +136,7 @@ static CGPoint get_mousepos_cgpoint(void)
 	CGEventRef ev = CGEventCreate(NULL);
 
 	if (!ev) {
-		fprintf(stderr, "CGEventCreate failed\n");
+		elog("CGEventCreate failed\n");
 		abort();
 	}
 
@@ -162,7 +160,7 @@ static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 
 	ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
-		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
+		elog("CGEventCreateMouseEvent failed\n");
 		abort();
 	}
 	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
@@ -298,7 +296,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		break;
 
 	default:
-		fprintf(stderr, "unhandled click event button %u\n", button);
+		elog("unhandled click event button %u\n", button);
 		return;
 	}
 
@@ -312,7 +310,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 	}
 
 	if (!ev) {
-		fprintf(stderr, "CGEventCreateMouseEvent failed\n");
+		elog("CGEventCreateMouseEvent failed\n");
 		abort();
 	}
 	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
@@ -351,7 +349,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 	cgkc = keycode_to_cgkeycode(key);
 	if (cgkc == kVK_NULL) {
-		fprintf(stderr, "keycode %u not mapped\n", key);
+		elog("keycode %u not mapped\n", key);
 		return;
 	}
 
@@ -364,7 +362,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 		ev = CGEventCreate(NULL);
 		if (!ev) {
-			fprintf(stderr, "CGEventCreate() failed\n");
+			elog("CGEventCreate() failed\n");
 			abort();
 		}
 		CGEventSetType(ev, kCGEventFlagsChanged);
@@ -374,7 +372,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 	ev = CGEventCreateKeyboardEvent(NULL, cgkc, pr == PR_PRESS);
 	if (!ev) {
-		fprintf(stderr, "CGEventCreateKeyboardEvent() failed\n");
+		elog("CGEventCreateKeyboardEvent() failed\n");
 		abort();
 	}
 
@@ -405,13 +403,13 @@ char* get_clipboard_text(void)
 
 	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardGetItemIdentifier(1) failed (%d)\n", status);
+		elog("PasteboardGetItemIdentifier(1) failed (%d)\n", status);
 		return NULL;
 	}
 
 	status = PasteboardCopyItemFlavorData(clipboard, itemid, PLAINTEXT, &data);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
+		elog("PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
 		return NULL;
 	}
 
@@ -433,7 +431,7 @@ int set_clipboard_text(const char* text)
 
 	data = CFDataCreate(NULL, (UInt8*)text, strlen(text));
 	if (!data) {
-		fprintf(stderr, "CFDataCreate() failed\n");
+		elog("CFDataCreate() failed\n");
 		return -1;
 	}
 
@@ -448,7 +446,7 @@ int set_clipboard_text(const char* text)
 	status = PasteboardPutItemFlavor(clipboard, (PasteboardItemID)data,
 	                                 PLAINTEXT, data, 0);
 	if (status != noErr) {
-		fprintf(stderr, "PasteboardPutItemFlavor() failed (%d)\n", status);
+		elog("PasteboardPutItemFlavor() failed (%d)\n", status);
 		ret = -1;
 	}
 
@@ -459,16 +457,16 @@ int set_clipboard_text(const char* text)
 
 int grab_inputs(void)
 {
-	fprintf(stderr, "grab_inputs() NYI on OSX\n");
+	elog("grab_inputs() NYI on OSX\n");
 	return -1;
 }
 
 void ungrab_inputs(void)
 {
-	fprintf(stderr, "ungrab_inputs() NYI on OSX\n");
+	elog("ungrab_inputs() NYI on OSX\n");
 }
 
 void process_events(void)
 {
-	fprintf(stderr, "process_events() NYI on OSX\n");
+	elog("process_events() NYI on OSX\n");
 }

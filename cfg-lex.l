@@ -68,8 +68,7 @@ integer		[-]?[0-9]+
 }
 
 <*>.|\n {
-	fprintf(stderr, "unrecognized token at line %d: %s\n", cfg_lineno,
-	        cfg_text);
+	elog("unrecognized token at line %d: %s\n", cfg_lineno, cfg_text);
 	exit(1);
 }
 

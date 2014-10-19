@@ -189,7 +189,7 @@ int parse_cfg(const char* path, struct config* cfg)
 	FILE* cfgfile = fopen(path, "r");
 
 	if (!cfgfile) {
-		fprintf(stderr, "%s: %s\n", path, strerror(errno));
+		elog("%s: %s\n", path, strerror(errno));
 		return -1;
 	}
 
@@ -210,5 +210,5 @@ int parse_cfg(const char* path, struct config* cfg)
 
 static void cfg_error(struct cfg_pstate* st, char const* s)
 {
-	fprintf(stderr, "config parse error: %s\n", s);
+	elog("config parse error: %s\n", s);
 }

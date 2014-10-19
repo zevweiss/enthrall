@@ -75,6 +75,8 @@ static inline void xfree(void* p)
 	free(p);
 }
 
+void elog(const char* fmt, ...);
+
 extern struct remote* active_remote;
 void send_keyevent(keycode_t kc, pressrel_t pr);
 void send_moverel(int32_t dx, int32_t dy);
