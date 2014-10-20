@@ -564,6 +564,9 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 		return;
 	}
 
+	if (switch_to == active_remote)
+		return;
+
 	if (active_remote && !switch_to) {
 		ungrab_inputs();
 		set_mousepos(saved_master_mousepos);
