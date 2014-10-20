@@ -327,3 +327,9 @@ struct message* new_message(msgtype_t type)
 
 	return msg;
 }
+
+void free_message(struct message* msg)
+{
+	xfree(msg->extra.buf);
+	xfree(msg);
+}

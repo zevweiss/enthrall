@@ -103,6 +103,7 @@ struct partsend {
 };
 
 struct message* new_message(msgtype_t type);
+void free_message(struct message* msg);
 
 int send_message(int fd, const struct message* msg);
 int receive_message(int fd, struct message* msg);

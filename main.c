@@ -369,16 +369,46 @@ static void disconnect_remote(struct remote* rmt)
 	/* FIXME: if (rmt == active_remote) { ... } */
 }
 
+static struct message* dequeue_message(struct remote* rmt)
+{
+	struct message* msg;
+
+	msg = rmt->sendqueue.head;
+
+	if (msg) {
+		rmt->sendqueue.head = msg->next;
+		if (!msg->next)
+			rmt->sendqueue.tail = NULL;
+		rmt->sendqueue.num_queued -= 1;
+	}
+
+	return msg;
+}
+
 #define MAX_RECONNECT_INTERVAL (30 * 1000 * 1000)
 #define MAX_RECONNECT_ATTEMPTS 10
 
 static void fail_remote(struct remote* rmt, const char* reason)
 {
 	uint64_t tmp, lshift;
+	struct message* msg;
 
 	elog("disconnecting remote '%s': %s\n", rmt->alias, reason);
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
+
+	/* Reset send & receive queues/buffers */
+	while ((msg = dequeue_message(rmt)))
+		free_message(msg);
+
+	xfree(rmt->send_msgbuf.msgbuf);
+	rmt->send_msgbuf.msgbuf = NULL;
+	rmt->send_msgbuf.bytes_sent = 0;
+	rmt->send_msgbuf.msg_len = 0;
+
+	xfree(rmt->recv_msgbuf.plbuf);
+	rmt->recv_msgbuf.plbuf = NULL;
+	rmt->recv_msgbuf.bytes_recvd = 0;
 
 	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
 		elog("remote '%s' exceeds failure limits, permfailing.\n", rmt->alias);
@@ -672,15 +702,10 @@ static void write_rmtdata(struct remote* rmt)
 	struct message* msg;
 
 	if (!rmt->send_msgbuf.msgbuf) {
-		assert(rmt->sendqueue.head);
-		msg = rmt->sendqueue.head;
-		rmt->sendqueue.head = msg->next;
-		if (!msg->next)
-			rmt->sendqueue.tail = NULL;
-		rmt->sendqueue.num_queued -= 1;
+		msg = dequeue_message(rmt);
+		assert(msg);
 		unparse_message(msg, &rmt->send_msgbuf);
-		xfree(msg->extra.buf);
-		xfree(msg);
+		free_message(msg);
 	}
 
 	status = drain_msgbuf(rmt->sock, &rmt->send_msgbuf);
