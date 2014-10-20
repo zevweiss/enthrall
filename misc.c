@@ -61,3 +61,23 @@ void set_fd_nonblock(int fd, int nb)
 		abort();
 	}
 }
+
+void set_fd_cloexec(int fd, int ce)
+{
+	int flags = fcntl(fd, F_GETFD);
+
+	if (flags == -1) {
+		perror("fcntl");
+		abort();
+	}
+
+	if (ce)
+		flags |= FD_CLOEXEC;
+	else
+		flags &= ~FD_CLOEXEC;
+
+	if (fcntl(fd, F_SETFD, flags)) {
+		perror("fcntl");
+		abort();
+	}
+}

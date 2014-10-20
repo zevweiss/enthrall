@@ -333,6 +333,7 @@ static void setup_remote(struct remote* rmt)
 		rmt->sock = sockfds[0];
 
 		set_fd_nonblock(rmt->sock, 1);
+		set_fd_cloexec(rmt->sock, 1);
 
 		if (close(sockfds[1]))
 			perror("close");

@@ -86,5 +86,6 @@ int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);
 
 void set_fd_nonblock(int fd, int nb);
+void set_fd_cloexec(int fd, int ce);
 
 #endif /* MISC_H */
