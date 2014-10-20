@@ -15,7 +15,7 @@ struct cfg_pstate {
 	struct remote* nextrmt;
 };
 
-int parse_cfg(const char* path, struct config* cfg);
+int parse_cfg(FILE* cfgfile, struct config* cfg);
 
 }
 
@@ -185,16 +185,10 @@ remote_opt: KW_HOSTNAME EQ STRING {
 
 %%
 
-int parse_cfg(const char* path, struct config* cfg)
+int parse_cfg(FILE* cfgfile, struct config* cfg)
 {
 	int status;
 	struct cfg_pstate pstate;
-	FILE* cfgfile = fopen(path, "r");
-
-	if (!cfgfile) {
-		elog("%s: %s\n", path, strerror(errno));
-		return -1;
-	}
 
 	cfg_restart(cfgfile);
 
@@ -206,7 +200,6 @@ int parse_cfg(const char* path, struct config* cfg)
 	cfg_lex_destroy();
 
 	xfree(pstate.nextrmt);
-	fclose(cfgfile);
 
 	return status;
 }

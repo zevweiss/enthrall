@@ -10,6 +10,8 @@
 #include <sys/select.h>
 #include <sys/fcntl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "types.h"
 #include "misc.h"
@@ -746,6 +748,8 @@ int main(int argc, char** argv)
 	pid_t pid;
 	struct config cfg;
 	struct remote* rmt;
+	FILE* cfgfile;
+	struct stat st;
 
 	static const struct option options[] = {
 		{ "help", no_argument, NULL, 'h', },
@@ -800,9 +804,31 @@ int main(int argc, char** argv)
 		server_mode();
 	}
 
-	memset(&cfg, 0, sizeof(cfg));
-	if (parse_cfg(argv[0], &cfg))
+	cfgfile = fopen(argv[0], "r");
+	if (!cfgfile) {
+		elog("%s: %s\n", argv[0], strerror(errno));
 		exit(1);
+	}
+
+	if (fstat(fileno(cfgfile), &st)) {
+		elog("fstat(%s): %s\n", argv[0], strerror(errno));
+		exit(1);
+	}
+
+	if (st.st_uid != getuid()) {
+		elog("Error: bad ownership on %s\n", argv[0]);
+		exit(1);
+	}
+
+	if (st.st_mode & (S_IWGRP|S_IWOTH)) {
+		elog("Error: bad permissions on %s (writable by others)\n", argv[0]);
+		exit(1);
+	}
+
+	memset(&cfg, 0, sizeof(cfg));
+	if (parse_cfg(cfgfile, &cfg))
+		exit(1);
+	fclose(cfgfile);
 	config = &cfg;
 
 	check_remotes();
