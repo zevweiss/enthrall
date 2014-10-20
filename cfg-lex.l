@@ -19,7 +19,7 @@ extern YYSTYPE cfg_lval;
 %option prefix="cfg_"
 
 string          ["][^\"]*["]
-comment		[#][^\n]+
+comment		[#][^\n]*
 space		[ \t\n]+
 integer		[-]?[0-9]+
 
