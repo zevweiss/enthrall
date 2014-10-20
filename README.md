@@ -84,3 +84,8 @@ other user.
 
  - Configurable debug/logging levels instead of just haphazardly
    squirting things to stderr
+
+### License
+
+`enthrall` is released under the terms of the ISC License (see
+`LICENSE`).
