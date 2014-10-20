@@ -812,8 +812,10 @@ int main(int argc, char** argv)
 		{ NULL, 0, NULL, 0, },
 	};
 
-	progname = strrchr(argv[0], '/') + 1;
-	progname = progname ? progname : argv[0];
+	if (strrchr(argv[0], '/'))
+		progname = strrchr(argv[0], '/') + 1;
+	else
+		progname = argv[0];
 
 	while ((opt = getopt_long(argc, argv, "h", options, NULL)) != -1) {
 		switch (opt) {
