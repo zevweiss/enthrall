@@ -63,6 +63,10 @@ static const struct {
 	[Mod5MapIndex]    = { "mod5",     Mod5Mask,    },
 };
 
+/* Some of these may get removed to account for NumLock, etc. */
+static unsigned int relevant_modmask = \
+	(ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask);
+
 static unsigned int get_mod_mask(KeySym modsym)
 {
 	int i;
@@ -108,7 +112,8 @@ static void grab_key(KeyCode kc, unsigned int orig_mask)
 
 static inline int match_hotkey(const struct xhotkey* hk, const XKeyEvent* kev)
 {
-	return kev->keycode == hk->key && kev->state == hk->modmask;
+	return kev->keycode == hk->key &&
+		(kev->state & relevant_modmask) == (hk->modmask & relevant_modmask);
 }
 
 static const struct xhotkey* find_hotkey(const XKeyEvent* kev)
@@ -317,6 +322,13 @@ int platform_init(void)
 
 	/* Clear any key grabs (not that any should exist, really...) */
 	XUngrabKey(xdisp, AnyKey, AnyModifier, xrootwin);
+
+	/*
+	 * Remove scroll lock and num lock from the set of modifiers we pay
+	 * attention to in matching hotkey bindings
+	 */
+	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
+	                      | get_mod_mask(XK_Num_Lock));
 
 	return XConnectionNumber(xdisp);
 }
@@ -596,16 +608,18 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	KeySym sym;
 	keycode_t kc;
 
-	if (!active_remote) {
-		elog("keyevent with no active remote\n");
-		return;
-	}
-
 	sym = XLookupKeysym(kev, 0);
 	kc = keysym_to_keycode(sym);
 
 	if (kc == ET_null) {
 		elog("No mapping for keysym %lu (%s)\n", sym, XKeysymToString(sym));
+		return;
+	}
+
+	if (!active_remote) {
+		elog("keyevent (%s %s, modmask=%#x) with no active remote\n",
+		     XKeysymToString(sym), pr == PR_PRESS ? "pressed" : "released",
+		     kev->state);
 		return;
 	}
 
