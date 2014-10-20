@@ -72,6 +72,9 @@ static struct remote* new_uninit_remote(void)
 %type <noderef> node
 %type <action> action
 
+%type <i> port_setting
+%type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
+
 %debug
 
 %name-prefix "cfg_"
@@ -109,11 +112,26 @@ master_opts: EMPTY
 | master_opt master_opts {
 };
 
-master_opt: KW_REMOTESHELL EQ STRING {
-	st->cfg->remote_shell = $3;
+port_setting: KW_PORT EQ INTEGER { $$ = $3; }
+user_setting: KW_USER EQ STRING { $$ = $3; }
+bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; }
+remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; }
+remoteshell_setting: KW_REMOTESHELL EQ STRING { $$ = $3; }
+
+master_opt: remoteshell_setting {
+	st->cfg->ssh_defaults.remoteshell = $1;
 }
-| KW_BINDADDR EQ STRING {
-	st->cfg->bind_address = $3;
+| port_setting {
+	st->cfg->ssh_defaults.port = $1;
+}
+| bindaddr_setting {
+	st->cfg->ssh_defaults.bindaddr = $1;
+}
+| user_setting {
+	st->cfg->ssh_defaults.username = $1;
+}
+| remotecmd_setting {
+	st->cfg->ssh_defaults.remotecmd = $1;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));
@@ -170,14 +188,20 @@ remote_optlist: EMPTY
 remote_opt: KW_HOSTNAME EQ STRING {
 	st->nextrmt->hostname = $3;
 }
-| KW_PORT EQ INTEGER {
-	st->nextrmt->port = $3;
+| remoteshell_setting {
+	st->nextrmt->sshcfg.remoteshell = $1;
 }
-| KW_USER EQ STRING {
-	st->nextrmt->username = $3;
+| port_setting {
+	st->nextrmt->sshcfg.port = $1;
 }
-| KW_REMOTECMD EQ STRING {
-	st->nextrmt->remotecmd = $3;
+| bindaddr_setting {
+	st->nextrmt->sshcfg.bindaddr = $1;
+}
+| user_setting {
+	st->nextrmt->sshcfg.username = $1;
+}
+| remotecmd_setting {
+	st->nextrmt->sshcfg.remotecmd = $1;
 }
 | DIRECTION EQ node {
 	st->nextrmt->neighbors[$1] = $3;

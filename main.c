@@ -136,11 +136,39 @@ static void server_mode(void)
 		handle_message();
 }
 
+static inline char* get_remoteshell(const struct remote* rmt)
+{
+	return rmt->sshcfg.remoteshell ? rmt->sshcfg.remoteshell
+		: config->ssh_defaults.remoteshell;
+}
+
+static inline int get_port(const struct remote* rmt)
+{
+	return rmt->sshcfg.port ? rmt->sshcfg.port : config->ssh_defaults.port;
+}
+
+static inline char* get_bindaddr(const struct remote* rmt)
+{
+	return rmt->sshcfg.bindaddr ? rmt->sshcfg.bindaddr
+		: config->ssh_defaults.bindaddr;
+}
+
+static inline char* get_username(const struct remote* rmt)
+{
+	return rmt->sshcfg.username ? rmt->sshcfg.username
+		: config->ssh_defaults.username;
+}
+
+static inline char* get_remotecmd(const struct remote* rmt)
+{
+	return rmt->sshcfg.remotecmd ? rmt->sshcfg.remotecmd
+		: config->ssh_defaults.remotecmd;
+}
+
 static void exec_remote_shell(const struct remote* rmt)
 {
 	int nargs;
-	char portbuf[32];
-	char* remote_shell = config->remote_shell ? config->remote_shell : "ssh";
+	char* remote_shell = get_remoteshell(rmt) ? get_remoteshell(rmt) : "ssh";
 	char* argv[] = {
 		remote_shell,
 		"-oBatchMode=yes",
@@ -162,25 +190,24 @@ static void exec_remote_shell(const struct remote* rmt)
 
 	for (nargs = 0; argv[nargs]; nargs++) /* just find first NULL entry */;
 
-	if (config->bind_address) {
-		argv[nargs++] = "-b";
-		argv[nargs++] = config->bind_address;
-	}
-
-	if (rmt->port) {
-		snprintf(portbuf, sizeof(portbuf), "%d", rmt->port);
+	if (get_port(rmt)) {
 		argv[nargs++] = "-p";
-		argv[nargs++] = portbuf;
+		argv[nargs++] = xasprintf("%d", get_port(rmt));
 	}
 
-	if (rmt->username) {
+	if (get_bindaddr(rmt)) {
+		argv[nargs++] = "-b";
+		argv[nargs++] = get_bindaddr(rmt);
+	}
+
+	if (get_username(rmt)) {
 		argv[nargs++] = "-l";
-		argv[nargs++] = rmt->username;
+		argv[nargs++] = get_username(rmt);
 	}
 
 	argv[nargs++] = rmt->hostname;
 
-	argv[nargs++] = rmt->remotecmd ? rmt->remotecmd : progname;
+	argv[nargs++] = get_remotecmd(rmt) ? get_remotecmd(rmt) : progname;
 
 	assert(nargs < ARR_LEN(argv));
 

@@ -77,17 +77,23 @@ struct noderef {
 	};
 };
 
+struct ssh_config {
+	char* remoteshell;
+	int port;
+	char* bindaddr;
+	char* username;
+	char* remotecmd;
+};
+
 struct remote {
 	char* alias;
 
 	/* Used for graph topology check */
 	int reachable;
 
-	/* remote shell parameters */
 	char* hostname;
-	char* username;
-	int port;
-	char* remotecmd;
+
+	struct ssh_config sshcfg;
 
 	/* neighbors */
 	struct noderef neighbors[NUM_DIRECTIONS];
@@ -144,6 +150,9 @@ struct config {
 	char* bind_address;
 	struct remote* remotes;
 	struct hotkey* hotkeys;
+
+	/* default SSH settings, optionally overridden per-remote */
+	struct ssh_config ssh_defaults;
 
 	/* master's neighbors */
 	struct noderef neighbors[NUM_DIRECTIONS];
