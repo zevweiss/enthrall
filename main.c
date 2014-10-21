@@ -67,273 +67,6 @@ static void set_clipboard_from_buf(const void* buf, size_t len)
 	xfree(tmp);
 }
 
-static void handle_message(void)
-{
-	struct message msg, resp;
-
-	if (receive_message(STDIN_FILENO, &msg)) {
-		elog("receive_message() failed\n");
-		exit(1);
-	}
-
-	switch (msg.type) {
-	case MT_SHUTDOWN:
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		exit(0);
-
-	case MT_MOVEREL:
-		move_mousepos(msg.moverel.dx, msg.moverel.dy);
-		break;
-
-	case MT_CLICKEVENT:
-		do_clickevent(msg.clickevent.button, msg.clickevent.pressrel);
-		break;
-
-	case MT_KEYEVENT:
-		do_keyevent(msg.keyevent.keycode, msg.keyevent.pressrel);
-		break;
-
-	case MT_GETCLIPBOARD:
-		resp.type = MT_SETCLIPBOARD;
-		resp.extra.buf = get_clipboard_text();
-		resp.extra.len = strlen(resp.extra.buf);
-		send_message(STDOUT_FILENO, &resp);
-		xfree(resp.extra.buf);
-		break;
-
-	case MT_SETCLIPBOARD:
-		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
-		break;
-
-	default:
-		elog("unhandled message type: %u\n", msg.type);
-		exit(1);
-	}
-
-	xfree(msg.extra.buf);
-}
-
-static void server_mode(void)
-{
-	struct message readymsg = {
-		.type = MT_READY,
-		{ .ready = { .prot_vers = PROT_VERSION, }, },
-		.extra.len = 0,
-	};
-
-	if (send_message(STDOUT_FILENO, &readymsg)) {
-		/*
-		 * Seems unlikely that sending a log message is going to work
-		 * if sending the ready message didn't, but I guess we might
-		 * as well try...
-		 */
-		elog("failed to send ready message\n");
-		exit(1);
-	}
-
-	for (;;)
-		handle_message();
-}
-
-#define SSH_DEFAULT(type, name) \
-	static inline type get_##name(const struct remote* rmt) \
-	{ \
-		return rmt->sshcfg.name ? rmt->sshcfg.name \
-			: config->ssh_defaults.name; \
-	}
-
-SSH_DEFAULT(char*, remoteshell)
-SSH_DEFAULT(int, port)
-SSH_DEFAULT(char*, bindaddr)
-SSH_DEFAULT(char*, identityfile)
-SSH_DEFAULT(char*, username)
-SSH_DEFAULT(char*, remotecmd)
-
-static void exec_remote_shell(const struct remote* rmt)
-{
-	int nargs;
-	char* remote_shell = get_remoteshell(rmt) ? get_remoteshell(rmt) : "ssh";
-	char* argv[] = {
-		remote_shell,
-		"-oBatchMode=yes",
-		"-oServerAliveInterval=2",
-		"-oServerAliveCountMax=3",
-
-		/* placeholders */
-		NULL, /* -b */
-		NULL, /* bind address */
-		NULL, /* -oIdentitiesOnly */
-		NULL, /* -i */
-		NULL, /* identity file */
-		NULL, /* -p */
-		NULL, /* port */
-		NULL, /* -l */
-		NULL, /* username */
-		NULL, /* hostname */
-		NULL, /* remote command */
-
-		NULL, /* argv terminator */
-	};
-
-	for (nargs = 0; argv[nargs]; nargs++) /* just find first NULL entry */;
-
-	if (get_port(rmt)) {
-		argv[nargs++] = "-p";
-		argv[nargs++] = xasprintf("%d", get_port(rmt));
-	}
-
-	if (get_bindaddr(rmt)) {
-		argv[nargs++] = "-b";
-		argv[nargs++] = get_bindaddr(rmt);
-	}
-
-	if (get_identityfile(rmt)) {
-		argv[nargs++] = "-oIdentitiesOnly=yes";
-		argv[nargs++] = "-i";
-		argv[nargs++] = get_identityfile(rmt);
-	}
-
-	if (get_username(rmt)) {
-		argv[nargs++] = "-l";
-		argv[nargs++] = get_username(rmt);
-	}
-
-	argv[nargs++] = rmt->hostname;
-
-	argv[nargs++] = get_remotecmd(rmt) ? get_remotecmd(rmt) : progname;
-
-	assert(nargs < ARR_LEN(argv));
-
-	execvp(remote_shell, argv);
-	perror("execvp");
-	exit(1);
-}
-
-static struct remote* find_remote(const char* name)
-{
-	struct remote* rmt;
-
-	/* First search by alias */
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		if (!strcmp(name, rmt->alias))
-			return rmt;
-	}
-
-	/* if that fails, try hostnames */
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		if (!strcmp(name, rmt->hostname))
-			return rmt;
-	}
-
-	return NULL;
-}
-
-static void resolve_noderef(struct noderef* n)
-{
-	struct remote* rmt;
-	if (n->type == NT_REMOTE_TMPNAME) {
-		rmt = find_remote(n->name);
-		if (!rmt) {
-			elog("No such remote: '%s'\n", n->name);
-			exit(1);
-		}
-		n->type = NT_REMOTE;
-		n->node = rmt;
-	}
-}
-
-static void mark_reachable(struct noderef* n)
-{
-	int seen;
-	direction_t dir;
-	struct remote* rmt;
-
-	switch (n->type) {
-	case NT_REMOTE_TMPNAME:
-		resolve_noderef(n);
-		/* fallthrough */
-	case NT_REMOTE:
-		rmt = n->node;
-		break;
-	default:
-		return;
-	}
-
-	seen = rmt->reachable;
-
-	rmt->reachable = 1;
-
-	if (!seen) {
-		for_each_direction (dir)
-			mark_reachable(&rmt->neighbors[dir]);
-	}
-}
-
-static void check_remotes(void)
-{
-	direction_t dir;
-	struct remote* rmt;
-	int num_neighbors;
-
-	for_each_direction (dir)
-		mark_reachable(&config->neighbors[dir]);
-
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		if (!rmt->reachable)
-			elog("Warning: remote '%s' is not reachable\n", rmt->alias);
-
-		num_neighbors = 0;
-		for_each_direction (dir) {
-			if (rmt->neighbors[dir].type != NT_NONE)
-				num_neighbors += 1;
-		}
-
-		if (!num_neighbors)
-			elog("Warning: remote '%s' has no neighbors\n", rmt->alias);
-	}
-}
-
-static void setup_remote(struct remote* rmt)
-{
-	int sockfds[2];
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfds)) {
-		perror("socketpair");
-		exit(1);
-	}
-
-	rmt->sshpid = fork();
-	if (rmt->sshpid < 0) {
-		perror("fork");
-		exit(1);
-	}
-
-	rmt->state = CS_SETTINGUP;
-
-	if (!rmt->sshpid) {
-		/* ssh child */
-		if (dup2(sockfds[1], STDIN_FILENO) < 0
-		    || dup2(sockfds[1], STDOUT_FILENO) < 0) {
-			perror("dup2");
-			exit(1);
-		}
-
-		if (close(sockfds[0]))
-			perror("close");
-
-		exec_remote_shell(rmt);
-	} else {
-		rmt->sock = sockfds[0];
-
-		set_fd_nonblock(rmt->sock, 1);
-		set_fd_cloexec(rmt->sock, 1);
-
-		if (close(sockfds[1]))
-			perror("close");
-	}
-}
-
 static void disconnect_remote(struct remote* rmt)
 {
 	pid_t pid;
@@ -439,6 +172,294 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG)
 		fail_remote(rmt, "send backlog exceeded");
 }
+
+#define SSH_DEFAULT(type, name) \
+	static inline type get_##name(const struct remote* rmt) \
+	{ \
+		return rmt->sshcfg.name ? rmt->sshcfg.name \
+			: config->ssh_defaults.name; \
+	}
+
+SSH_DEFAULT(char*, remoteshell)
+SSH_DEFAULT(int, port)
+SSH_DEFAULT(char*, bindaddr)
+SSH_DEFAULT(char*, identityfile)
+SSH_DEFAULT(char*, username)
+SSH_DEFAULT(char*, remotecmd)
+
+static void exec_remote_shell(const struct remote* rmt)
+{
+	int nargs;
+	char* remote_shell = get_remoteshell(rmt) ? get_remoteshell(rmt) : "ssh";
+	char* argv[] = {
+		remote_shell,
+		"-oBatchMode=yes",
+		"-oServerAliveInterval=2",
+		"-oServerAliveCountMax=3",
+
+		/* placeholders */
+		NULL, /* -b */
+		NULL, /* bind address */
+		NULL, /* -oIdentitiesOnly */
+		NULL, /* -i */
+		NULL, /* identity file */
+		NULL, /* -p */
+		NULL, /* port */
+		NULL, /* -l */
+		NULL, /* username */
+		NULL, /* hostname */
+		NULL, /* remote command */
+
+		NULL, /* argv terminator */
+	};
+
+	for (nargs = 0; argv[nargs]; nargs++) /* just find first NULL entry */;
+
+	if (get_port(rmt)) {
+		argv[nargs++] = "-p";
+		argv[nargs++] = xasprintf("%d", get_port(rmt));
+	}
+
+	if (get_bindaddr(rmt)) {
+		argv[nargs++] = "-b";
+		argv[nargs++] = get_bindaddr(rmt);
+	}
+
+	if (get_identityfile(rmt)) {
+		argv[nargs++] = "-oIdentitiesOnly=yes";
+		argv[nargs++] = "-i";
+		argv[nargs++] = get_identityfile(rmt);
+	}
+
+	if (get_username(rmt)) {
+		argv[nargs++] = "-l";
+		argv[nargs++] = get_username(rmt);
+	}
+
+	argv[nargs++] = rmt->hostname;
+
+	argv[nargs++] = get_remotecmd(rmt) ? get_remotecmd(rmt) : progname;
+
+	assert(nargs < ARR_LEN(argv));
+
+	execvp(remote_shell, argv);
+	perror("execvp");
+	exit(1);
+}
+
+static void setup_remote(struct remote* rmt)
+{
+	int sockfds[2];
+	struct message* setupmsg;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfds)) {
+		perror("socketpair");
+		exit(1);
+	}
+
+	rmt->sshpid = fork();
+	if (rmt->sshpid < 0) {
+		perror("fork");
+		exit(1);
+	}
+
+	rmt->state = CS_SETTINGUP;
+
+	if (!rmt->sshpid) {
+		/* ssh child */
+		if (dup2(sockfds[1], STDIN_FILENO) < 0
+		    || dup2(sockfds[1], STDOUT_FILENO) < 0) {
+			perror("dup2");
+			exit(1);
+		}
+
+		if (close(sockfds[0]))
+			perror("close");
+
+		exec_remote_shell(rmt);
+	}
+
+	rmt->sock = sockfds[0];
+
+	set_fd_nonblock(rmt->sock, 1);
+	set_fd_cloexec(rmt->sock, 1);
+
+	if (close(sockfds[1]))
+		perror("close");
+
+	setupmsg = new_message(MT_SETUP);
+	setupmsg->type = MT_SETUP;
+	setupmsg->setup.prot_vers = PROT_VERSION;
+	setupmsg->extra.buf = NULL;
+	setupmsg->extra.len = 0;
+
+	enqueue_message(rmt, setupmsg);
+}
+
+static void handle_message(void)
+{
+	struct message msg, resp;
+
+	if (receive_message(STDIN_FILENO, &msg)) {
+		elog("receive_message() failed\n");
+		exit(1);
+	}
+
+	switch (msg.type) {
+	case MT_SHUTDOWN:
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		exit(0);
+
+	case MT_MOVEREL:
+		move_mousepos(msg.moverel.dx, msg.moverel.dy);
+		break;
+
+	case MT_CLICKEVENT:
+		do_clickevent(msg.clickevent.button, msg.clickevent.pressrel);
+		break;
+
+	case MT_KEYEVENT:
+		do_keyevent(msg.keyevent.keycode, msg.keyevent.pressrel);
+		break;
+
+	case MT_GETCLIPBOARD:
+		resp.type = MT_SETCLIPBOARD;
+		resp.extra.buf = get_clipboard_text();
+		resp.extra.len = strlen(resp.extra.buf);
+		send_message(STDOUT_FILENO, &resp);
+		xfree(resp.extra.buf);
+		break;
+
+	case MT_SETCLIPBOARD:
+		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
+		break;
+
+	default:
+		elog("unhandled message type: %u\n", msg.type);
+		exit(1);
+	}
+
+	xfree(msg.extra.buf);
+}
+
+static void remote_loop(void)
+{
+	struct message setupmsg;
+	struct message readymsg = {
+		.type = MT_READY,
+		.extra = { .buf = NULL, .len = 0, },
+	};
+
+	/*
+	 * Seems unlikely that sending a log message is going to work if some
+	 * of these early setup steps failed, but I guess we might as well
+	 * try...
+	 */
+
+	if (receive_message(STDIN_FILENO, &setupmsg)) {
+		elog("failed to receive setup message\n");
+		exit(1);
+	}
+
+	if (setupmsg.setup.prot_vers != PROT_VERSION) {
+		elog("unsupported protocol version %d\n", setupmsg.setup.prot_vers);
+		exit(1);
+	}
+
+	if (send_message(STDOUT_FILENO, &readymsg)) {
+		elog("failed to send ready message\n");
+		exit(1);
+	}
+
+	for (;;)
+		handle_message();
+}
+
+static struct remote* find_remote(const char* name)
+{
+	struct remote* rmt;
+
+	/* First search by alias */
+	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		if (!strcmp(name, rmt->alias))
+			return rmt;
+	}
+
+	/* if that fails, try hostnames */
+	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		if (!strcmp(name, rmt->hostname))
+			return rmt;
+	}
+
+	return NULL;
+}
+
+static void resolve_noderef(struct noderef* n)
+{
+	struct remote* rmt;
+	if (n->type == NT_REMOTE_TMPNAME) {
+		rmt = find_remote(n->name);
+		if (!rmt) {
+			elog("No such remote: '%s'\n", n->name);
+			exit(1);
+		}
+		n->type = NT_REMOTE;
+		n->node = rmt;
+	}
+}
+
+static void mark_reachable(struct noderef* n)
+{
+	int seen;
+	direction_t dir;
+	struct remote* rmt;
+
+	switch (n->type) {
+	case NT_REMOTE_TMPNAME:
+		resolve_noderef(n);
+		/* fallthrough */
+	case NT_REMOTE:
+		rmt = n->node;
+		break;
+	default:
+		return;
+	}
+
+	seen = rmt->reachable;
+
+	rmt->reachable = 1;
+
+	if (!seen) {
+		for_each_direction (dir)
+			mark_reachable(&rmt->neighbors[dir]);
+	}
+}
+
+static void check_remotes(void)
+{
+	direction_t dir;
+	struct remote* rmt;
+	int num_neighbors;
+
+	for_each_direction (dir)
+		mark_reachable(&config->neighbors[dir]);
+
+	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		if (!rmt->reachable)
+			elog("Warning: remote '%s' is not reachable\n", rmt->alias);
+
+		num_neighbors = 0;
+		for_each_direction (dir) {
+			if (rmt->neighbors[dir].type != NT_NONE)
+				num_neighbors += 1;
+		}
+
+		if (!num_neighbors)
+			elog("Warning: remote '%s' has no neighbors\n", rmt->alias);
+	}
+}
+
 
 void transfer_clipboard(struct remote* from, struct remote* to)
 {
@@ -654,10 +675,6 @@ static void read_rmtdata(struct remote* rmt)
 			fail_remote(rmt, "unexpected READY message");
 			break;
 		}
-		if (msg.ready.prot_vers != PROT_VERSION) {
-			fail_remote(rmt, "unsupported protocol version");
-			break;
-		}
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->alias);
@@ -746,11 +763,11 @@ static void handle_fds(void)
 				next_reconnect_time = rmt->next_reconnect_time;
 		}
 
-		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP)
+		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP) {
 			fdset_add(rmt->sock, &rfds, &nfds);
-
-		if (rmt->state == CS_CONNECTED && have_outbound_data(rmt))
-			fdset_add(rmt->sock, &wfds, &nfds);
+			if (have_outbound_data(rmt))
+				fdset_add(rmt->sock, &wfds, &nfds);
+		}
 	}
 
 	fdset_add(platform_event_fd, &rfds, &nfds);
@@ -853,7 +870,7 @@ int main(int argc, char** argv)
 	}
 
 	if (opmode == REMOTE) {
-		server_mode();
+		remote_loop();
 	}
 
 	cfgfile = fopen(argv[0], "r");

@@ -7,7 +7,8 @@
 #define PROT_VERSION 0
 
 enum {
-	MT_READY = 1,
+	MT_SETUP = 1,
+	MT_READY,
 	MT_SHUTDOWN,
 	MT_MOVEREL,
 	MT_CLICKEVENT,
@@ -19,8 +20,12 @@ enum {
 
 typedef uint32_t msgtype_t;
 
-struct ready_msg {
+struct setup_msg {
 	uint32_t prot_vers;
+	/* extra data buffer contains additional configuration parameters */
+};
+
+struct ready_msg {
 };
 
 struct shutdown_msg {
@@ -70,6 +75,7 @@ struct message {
 
 	/* Primary message payload */
 	union {
+		struct setup_msg setup;
 		struct ready_msg ready;
 		struct shutdown_msg shutdown;
 		struct moverel_msg moverel;

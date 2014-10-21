@@ -9,7 +9,8 @@
 #include "proto.h"
 
 static const size_t payload_sizes[] = {
-	[MT_READY] = sizeof(uint32_t),
+	[MT_SETUP] = sizeof(uint32_t),
+	[MT_READY] = 0,
 	[MT_SHUTDOWN] = 0,
 	[MT_MOVEREL] = 2 * sizeof(int32_t),
 	[MT_CLICKEVENT] = 2 * sizeof(uint32_t),
@@ -19,14 +20,22 @@ static const size_t payload_sizes[] = {
 	[MT_LOGMSG] = 0,
 };
 
+static void flatten_setup(const struct message* msg, void* buf)
+{
+	*(uint32_t*)buf = htonl(msg->setup.prot_vers);
+}
+
+static void unflatten_setup(const void* buf, struct message* msg)
+{
+	msg->setup.prot_vers = ntohl(*(uint32_t*)buf);
+}
+
 static void flatten_ready(const struct message* msg, void* buf)
 {
-	*(uint32_t*)buf = htonl(msg->ready.prot_vers);
 }
 
 static void unflatten_ready(const void* buf, struct message* msg)
 {
-	msg->ready.prot_vers = ntohl(*(uint32_t*)buf);
 }
 
 static void flatten_shutdown(const struct message* msg, void* buf)
@@ -104,6 +113,7 @@ static void unflatten_logmsg(const void* buf, struct message* msg)
 }
 
 static void (*const flatteners[])(const struct message*, void*) = {
+	[MT_SETUP] = flatten_setup,
 	[MT_READY] = flatten_ready,
 	[MT_SHUTDOWN] = flatten_shutdown,
 	[MT_MOVEREL] = flatten_moverel,
@@ -115,6 +125,7 @@ static void (*const flatteners[])(const struct message*, void*) = {
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
+	[MT_SETUP] = unflatten_setup,
 	[MT_READY] = unflatten_ready,
 	[MT_SHUTDOWN] = unflatten_shutdown,
 	[MT_MOVEREL] = unflatten_moverel,
