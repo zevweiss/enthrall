@@ -43,7 +43,7 @@ void process_events(void);
  */
 extern struct xypoint screen_center;
 
-int platform_init(void);
+int platform_init(int* fd);
 void platform_exit(void);
 
 #endif /* PLATFORM_H */

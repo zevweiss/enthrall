@@ -289,7 +289,7 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	return 0;
 }
 
-int platform_init(void)
+int platform_init(int* fd)
 {
 	char bitmap[1] = { 0, };
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
@@ -330,7 +330,9 @@ int platform_init(void)
 	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
 	                      | get_mod_mask(XK_Num_Lock));
 
-	return XConnectionNumber(xdisp);
+	*fd = XConnectionNumber(xdisp);
+
+	return 0;
 }
 
 void platform_exit(void)

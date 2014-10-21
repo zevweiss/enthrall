@@ -327,6 +327,9 @@ static void handle_remote_fds(void)
 	if (mc_have_outbound_data(&stdio_msgchan))
 		fdset_add(stdio_msgchan.send_fd, &wfds, &nfds);
 
+	if (platform_event_fd >= 0)
+		fdset_add(platform_event_fd, &rfds, &nfds);
+
 	status = select(nfds, &rfds, &wfds, NULL, NULL);
 	if (status < 0) {
 		elog("select() failed: %s\n", strerror(errno));
@@ -340,6 +343,9 @@ static void handle_remote_fds(void)
 		else
 			assert(status > 0);
 	}
+
+	if (platform_event_fd >= 0 && FD_ISSET(platform_event_fd, &rfds))
+		process_events();
 
 	if (FD_ISSET(stdio_msgchan.recv_fd, &rfds)) {
 		status = recv_message(&stdio_msgchan, &msg);
@@ -380,8 +386,7 @@ static void run_remote(void)
 		exit(1);
 	}
 
-	platform_event_fd = platform_init();
-	if (platform_event_fd < 0) {
+	if (platform_init(&platform_event_fd) < 0) {
 		elog("platform_init() failed\n");
 		exit(1);
 	}
@@ -873,8 +878,7 @@ int main(int argc, char** argv)
 		run_remote();
 	}
 
-	platform_event_fd = platform_init();
-	if (platform_event_fd < 0) {
+	if (platform_init(&platform_event_fd)) {
 		elog("platform_init failed\n");
 		exit(1);
 	}

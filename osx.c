@@ -47,7 +47,7 @@ static CGEventFlags modflags;
 
 #define MEDIAN(x, y) ((x) + (((y)-(x)) / 2))
 
-int platform_init(void)
+int platform_init(int* fd)
 {
 	CGError cgerr;
 	OSStatus status;
@@ -94,6 +94,7 @@ int platform_init(void)
 		return -1;
 	}
 
+	*fd = -1;
 	return 0;
 }
 
