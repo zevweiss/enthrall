@@ -27,7 +27,14 @@ static Atom utf8_string_atom;
 
 static Time last_xevent_time;
 
-#define ET_XSELECTION XA_PRIMARY
+static struct {
+	const char* name;
+	Atom atom;
+} clipboard_xatoms[] = {
+	{ "PRIMARY", XA_PRIMARY, },
+	{ "CLIPBOARD", None, }, /* filled in in platform_init() */
+};
+
 static char* clipboard_text;
 static Time xselection_owned_since;
 
@@ -291,6 +298,8 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 
 int platform_init(int* fd)
 {
+	int i;
+	Atom atom;
 	char bitmap[1] = { 0, };
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
@@ -314,6 +323,13 @@ int platform_init(int* fd)
 
 	et_selection_data = XInternAtom(xdisp, "ET_SELECTION_DATA", False);
 	utf8_string_atom = XInternAtom(xdisp, "UTF8_STRING", False);
+
+	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
+		if (clipboard_xatoms[i].atom == None) {
+			atom = XInternAtom(xdisp, clipboard_xatoms[i].name, False);
+			clipboard_xatoms[i].atom = atom;
+		}
+	}
 
 	/* Create the blank cursor used when grabbing input */
 	cursor_pixmap = XCreatePixmapFromBitmapData(xdisp, xrootwin, bitmap, 1, 1, 0, 0, 1);
@@ -475,6 +491,7 @@ static void get_xevent(XEvent* e)
 char* get_clipboard_text(void)
 {
 	XEvent ev;
+	Atom selection_atom = clipboard_xatoms[0].atom;
 	Atom proptype;
 	int propformat;
 	unsigned long nitems, bytes_remaining;
@@ -489,7 +506,7 @@ char* get_clipboard_text(void)
 		return xstrdup(clipboard_text);
 
 	/* FIXME: delete et_selection_data from xwin before requestion conversion */
-	XConvertSelection(xdisp, ET_XSELECTION, XA_STRING, et_selection_data,
+	XConvertSelection(xdisp, selection_atom, XA_STRING, et_selection_data,
 	                  xwin, last_xevent_time);
 	XFlush(xdisp);
 
@@ -504,7 +521,7 @@ char* get_clipboard_text(void)
 		if (ev.xselection.property == None)
 			return xstrdup("");
 
-		if (ev.xselection.selection != ET_XSELECTION)
+		if (ev.xselection.selection != selection_atom)
 			elog("unexpected selection in SelectionNotify event\n");
 		if (ev.xselection.property != et_selection_data)
 			elog("unexpected property in SelectionNotify event\n");
@@ -542,14 +559,19 @@ char* get_clipboard_text(void)
 
 int set_clipboard_text(const char* text)
 {
+	int i;
+	Atom atom;
+
 	xfree(clipboard_text);
 	clipboard_text = xstrdup(text);
 
-	XSetSelectionOwner(xdisp, ET_XSELECTION, xwin, last_xevent_time);
-
-	if (XGetSelectionOwner(xdisp, ET_XSELECTION) != xwin) {
-		elog("failed to take ownership of X selection\n");
-		return -1;
+	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
+		atom = clipboard_xatoms[i].atom;
+		XSetSelectionOwner(xdisp, atom, xwin, last_xevent_time);
+		if (XGetSelectionOwner(xdisp, atom) != xwin) {
+			elog("failed to take ownership of X selection\n");
+			return -1;
+		}
 	}
 
 	xselection_owned_since = last_xevent_time;
@@ -573,13 +595,28 @@ static Status send_selection_notify(const XSelectionRequestEvent* req, Atom prop
 	return XSendEvent(xdisp, req->requestor, False, 0, &ev);
 }
 
+static int is_known_clipboard_xatom(Atom atom)
+{
+	int i;
+
+	if (atom == None)
+		return 0;
+
+	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
+		if (clipboard_xatoms[i].atom == atom)
+			return 1;
+	}
+
+	return 0;
+}
+
 static void handle_selection_request(const XSelectionRequestEvent* req)
 {
 	Atom property;
 
 	if (!clipboard_text
 	    || (req->time != CurrentTime && req->time < xselection_owned_since)
-	    || req->selection != ET_XSELECTION || req->owner != xwin) {
+	    || req->owner != xwin || !is_known_clipboard_xatom(req->selection)) {
 		property = None;
 	} else if (req->target != XA_STRING) {
 		property = None;
@@ -672,7 +709,7 @@ static void handle_event(XEvent* ev)
 
 	case SelectionClear:
 		if (ev->xselectionclear.window == xwin
-		    && ev->xselectionclear.selection == ET_XSELECTION) {
+		    && is_known_clipboard_xatom(ev->xselectionclear.selection)) {
 			xfree(clipboard_text);
 			clipboard_text = NULL;
 			xselection_owned_since = 0;
