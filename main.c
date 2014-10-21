@@ -179,7 +179,7 @@ static void exec_remote_shell(const struct remote* rmt)
 		/* placeholders */
 		NULL, /* -b */
 		NULL, /* bind address */
-		NULL, /* -oIdentitiesOnly */
+		NULL, /* -oIdentitiesOnly=yes */
 		NULL, /* -i */
 		NULL, /* identity file */
 		NULL, /* -p */
@@ -752,6 +752,16 @@ static inline int have_outbound_data(const struct remote* rmt)
 	return mc_have_outbound_data(&rmt->msgchan);
 }
 
+/*
+ * Check if the given remote is in a state that would be eligible for sending
+ * or receiving messages.  (remote_live() is admittedly not a great name for
+ * this, but I can't think of anything better at the moment.)
+ */
+static inline int remote_live(const struct remote* rmt)
+{
+	return rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP;
+}
+
 static void handle_fds(void)
 {
 	int status, nfds = 0;
@@ -774,7 +784,7 @@ static void handle_fds(void)
 				next_reconnect_time = rmt->next_reconnect_time;
 		}
 
-		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP) {
+		if (remote_live(rmt)) {
 			fdset_add(rmt->msgchan.recv_fd, &rfds, &nfds);
 			if (have_outbound_data(rmt))
 				fdset_add(rmt->msgchan.send_fd, &wfds, &nfds);
@@ -804,9 +814,14 @@ static void handle_fds(void)
 		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us) {
 			setup_remote(rmt);
 		} else {
-			if (FD_ISSET(rmt->msgchan.recv_fd, &rfds))
+			if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
 				read_rmtdata(rmt);
-			if (FD_ISSET(rmt->msgchan.send_fd, &wfds))
+
+			/*
+			 * read_rmtdata() might have changed the remote's
+			 * status, so check remote_live() again
+			 */
+			if (remote_live(rmt) && FD_ISSET(rmt->msgchan.send_fd, &wfds))
 				write_rmtdata(rmt);
 		}
 	}
