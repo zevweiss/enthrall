@@ -197,7 +197,7 @@ int drain_msgbuf(int fd, struct partsend* ps)
 	return 1;
 }
 
-int send_message(int fd, const struct message* msg)
+int write_message(int fd, const struct message* msg)
 {
 	int status;
 	struct partsend ps = {
@@ -307,7 +307,7 @@ void parse_message(struct partrecv* pr, struct message* msg)
 	pr->bytes_recvd = 0;
 }
 
-int receive_message(int fd, struct message* msg)
+int read_message(int fd, struct message* msg)
 {
 	int status;
 	struct partrecv pr = {

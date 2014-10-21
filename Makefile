@@ -24,8 +24,8 @@ endif
 CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h
 
 
-HEADERS = misc.h types.h proto.h platform.h keycodes.h $(PLATFORM)-keycodes.h
-SRCS = main.c proto.c misc.c $(PLATFORM).c $(PLATFORM)-keycodes.c
+HEADERS = misc.h types.h proto.h msgchan.h platform.h keycodes.h $(PLATFORM)-keycodes.h
+SRCS = main.c proto.c msgchan.c misc.c $(PLATFORM).c $(PLATFORM)-keycodes.c
 
 enthrall: $(SRCS) $(HEADERS) $(CFGSRCS)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^) $(LIBS)

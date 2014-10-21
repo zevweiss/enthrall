@@ -34,22 +34,41 @@ enum {
 	REMOTE,
 } opmode;
 
+/* msgchan attached to stdin & stdout for use in remote mode */
+struct msgchan stdio_msgchan;
+
 void elog(const char* fmt, ...)
 {
 	va_list va;
-	struct message msg;
+	struct message* msg;
 
 	va_start(va, fmt);
 	if (opmode == MASTER) {
 		vfprintf(stderr, fmt, va);
 	} else {
-		msg.type = MT_LOGMSG;
-		msg.extra.buf = xvasprintf(fmt, va);
-		msg.extra.len = strlen(msg.extra.buf);
-		send_message(STDOUT_FILENO, &msg);
-		xfree(msg.extra.buf);
+		msg = new_message(MT_LOGMSG);
+		msg->extra.buf = xvasprintf(fmt, va);
+		msg->extra.len = strlen(msg->extra.buf);
+
+		/*
+		 * There are a few potential error messages during setup
+		 * before we go O_NONBLOCK; handle both situations here.
+		 */
+		if (get_fd_nonblock(STDOUT_FILENO)) {
+			mc_enqueue_message(&stdio_msgchan, msg);
+		} else {
+			write_message(STDOUT_FILENO, msg);
+			free_message(msg);
+		}
 	}
 	va_end(va);
+}
+
+static inline void fdset_add(int fd, fd_set* set, int* nfds)
+{
+	FD_SET(fd, set);
+	if (fd >= *nfds)
+		*nfds = fd + 1;
 }
 
 static void set_clipboard_from_buf(const void* buf, size_t len)
@@ -72,8 +91,8 @@ static void disconnect_remote(struct remote* rmt)
 	pid_t pid;
 	int status;
 
-	close(rmt->sock);
-	rmt->sock = -1;
+	/* Close fds and reset send & receive queues/buffers */
+	mc_close(&rmt->msgchan);
 
 	/*
 	 * A note on signal choice here: initially this used SIGTERM (which
@@ -97,46 +116,16 @@ static void disconnect_remote(struct remote* rmt)
 	/* FIXME: if (rmt == active_remote) { ... } */
 }
 
-static struct message* dequeue_message(struct remote* rmt)
-{
-	struct message* msg;
-
-	msg = rmt->sendqueue.head;
-
-	if (msg) {
-		rmt->sendqueue.head = msg->next;
-		if (!msg->next)
-			rmt->sendqueue.tail = NULL;
-		rmt->sendqueue.num_queued -= 1;
-	}
-
-	return msg;
-}
-
 #define MAX_RECONNECT_INTERVAL (30 * 1000 * 1000)
 #define MAX_RECONNECT_ATTEMPTS 10
 
 static void fail_remote(struct remote* rmt, const char* reason)
 {
 	uint64_t tmp, lshift;
-	struct message* msg;
 
 	elog("disconnecting remote '%s': %s\n", rmt->alias, reason);
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
-
-	/* Reset send & receive queues/buffers */
-	while ((msg = dequeue_message(rmt)))
-		free_message(msg);
-
-	xfree(rmt->send_msgbuf.msgbuf);
-	rmt->send_msgbuf.msgbuf = NULL;
-	rmt->send_msgbuf.bytes_sent = 0;
-	rmt->send_msgbuf.msg_len = 0;
-
-	xfree(rmt->recv_msgbuf.plbuf);
-	rmt->recv_msgbuf.plbuf = NULL;
-	rmt->recv_msgbuf.bytes_recvd = 0;
 
 	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
 		elog("remote '%s' exceeds failure limits, permfailing.\n", rmt->alias);
@@ -157,19 +146,9 @@ static void fail_remote(struct remote* rmt, const char* reason)
 	rmt->next_reconnect_time = get_microtime() + tmp;
 }
 
-#define MAX_SEND_BACKLOG 64
-
 static void enqueue_message(struct remote* rmt, struct message* msg)
 {
-	msg->next = NULL;
-	if (rmt->sendqueue.tail)
-		rmt->sendqueue.tail->next = msg;
-	rmt->sendqueue.tail = msg;
-	if (!rmt->sendqueue.head)
-		rmt->sendqueue.head = msg;
-	rmt->sendqueue.num_queued += 1;
-
-	if (rmt->sendqueue.num_queued > MAX_SEND_BACKLOG)
+	if (mc_enqueue_message(&rmt->msgchan, msg))
 		fail_remote(rmt, "send backlog exceeded");
 }
 
@@ -279,10 +258,10 @@ static void setup_remote(struct remote* rmt)
 		exec_remote_shell(rmt);
 	}
 
-	rmt->sock = sockfds[0];
+	set_fd_nonblock(sockfds[0], 1);
+	set_fd_cloexec(sockfds[0], 1);
 
-	set_fd_nonblock(rmt->sock, 1);
-	set_fd_cloexec(rmt->sock, 1);
+	mc_init(&rmt->msgchan, sockfds[0], sockfds[0]);
 
 	if (close(sockfds[1]))
 		perror("close");
@@ -296,69 +275,103 @@ static void setup_remote(struct remote* rmt)
 	enqueue_message(rmt, setupmsg);
 }
 
-static void handle_message(void)
+static void handle_remote_message(const struct message* msg)
 {
-	struct message msg, resp;
+	struct message* resp;
 
-	if (receive_message(STDIN_FILENO, &msg)) {
-		elog("receive_message() failed\n");
-		exit(1);
-	}
-
-	switch (msg.type) {
+	switch (msg->type) {
 	case MT_SHUTDOWN:
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
+		mc_close(&stdio_msgchan);
 		exit(0);
 
 	case MT_MOVEREL:
-		move_mousepos(msg.moverel.dx, msg.moverel.dy);
+		move_mousepos(msg->moverel.dx, msg->moverel.dy);
 		break;
 
 	case MT_CLICKEVENT:
-		do_clickevent(msg.clickevent.button, msg.clickevent.pressrel);
+		do_clickevent(msg->clickevent.button, msg->clickevent.pressrel);
 		break;
 
 	case MT_KEYEVENT:
-		do_keyevent(msg.keyevent.keycode, msg.keyevent.pressrel);
+		do_keyevent(msg->keyevent.keycode, msg->keyevent.pressrel);
 		break;
 
 	case MT_GETCLIPBOARD:
-		resp.type = MT_SETCLIPBOARD;
-		resp.extra.buf = get_clipboard_text();
-		resp.extra.len = strlen(resp.extra.buf);
-		send_message(STDOUT_FILENO, &resp);
-		xfree(resp.extra.buf);
+		resp = new_message(MT_SETCLIPBOARD);
+		resp->extra.buf = get_clipboard_text();
+		resp->extra.len = strlen(resp->extra.buf);
+		mc_enqueue_message(&stdio_msgchan, resp);
 		break;
 
 	case MT_SETCLIPBOARD:
-		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
+		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
 		break;
 
 	default:
-		elog("unhandled message type: %u\n", msg.type);
+		elog("unhandled message type: %u\n", msg->type);
+		exit(1);
+	}
+}
+
+static void handle_remote_fds(void)
+{
+	int status, nfds = 0;
+	fd_set rfds, wfds;
+	struct message msg;
+
+	FD_ZERO(&rfds);
+	FD_ZERO(&wfds);
+
+	fdset_add(stdio_msgchan.recv_fd, &rfds, &nfds);
+
+	if (mc_have_outbound_data(&stdio_msgchan))
+		fdset_add(stdio_msgchan.send_fd, &wfds, &nfds);
+
+	status = select(nfds, &rfds, &wfds, NULL, NULL);
+	if (status < 0) {
+		elog("select() failed: %s\n", strerror(errno));
 		exit(1);
 	}
 
-	xfree(msg.extra.buf);
+	if (FD_ISSET(stdio_msgchan.send_fd, &wfds)) {
+		status = send_message(&stdio_msgchan);
+		if (status < 0)
+			exit(1);
+		else
+			assert(status > 0);
+	}
+
+	if (FD_ISSET(stdio_msgchan.recv_fd, &rfds)) {
+		status = recv_message(&stdio_msgchan, &msg);
+		if (status < 0) {
+			elog("failed to receive valid message\n");
+			exit(1);
+		} else if (status > 0) {
+			handle_remote_message(&msg);
+			if (msg.extra.len)
+				xfree(msg.extra.buf);
+		}
+	}
 }
 
-static void remote_loop(void)
+static void run_remote(void)
 {
 	struct message setupmsg;
-	struct message readymsg = {
-		.type = MT_READY,
-		.extra = { .buf = NULL, .len = 0, },
-	};
+	struct message* readymsg;
 
 	/*
-	 * Seems unlikely that sending a log message is going to work if some
+	 * Seems unlikely that sending log messages is going to work if some
 	 * of these early setup steps failed, but I guess we might as well
 	 * try...
 	 */
 
-	if (receive_message(STDIN_FILENO, &setupmsg)) {
+	if (read_message(STDIN_FILENO, &setupmsg)) {
 		elog("failed to receive setup message\n");
+		exit(1);
+	}
+
+	if (setupmsg.type != MT_SETUP) {
+		elog("unexpected message type %u instead of SETUP\n", setupmsg.type);
 		exit(1);
 	}
 
@@ -367,13 +380,22 @@ static void remote_loop(void)
 		exit(1);
 	}
 
-	if (send_message(STDOUT_FILENO, &readymsg)) {
-		elog("failed to send ready message\n");
+	platform_event_fd = platform_init();
+	if (platform_event_fd < 0) {
+		elog("platform_init() failed\n");
 		exit(1);
 	}
 
+	set_fd_nonblock(STDIN_FILENO, 1);
+	set_fd_nonblock(STDOUT_FILENO, 1);
+
+	mc_init(&stdio_msgchan, STDOUT_FILENO, STDIN_FILENO);
+
+	readymsg = new_message(MT_READY);
+	mc_enqueue_message(&stdio_msgchan, readymsg);
+
 	for (;;)
-		handle_message();
+		handle_remote_fds();
 }
 
 static struct remote* find_remote(const char* name)
@@ -658,16 +680,14 @@ static void read_rmtdata(struct remote* rmt)
 	struct message msg;
 	struct message* msg2;
 
-	status = fill_msgbuf(rmt->sock, &rmt->recv_msgbuf);
+	status = recv_message(&rmt->msgchan, &msg);
 	if (!status)
 		return;
 
 	if (status < 0) {
-		fail_remote(rmt, "failed to read valid message");
+		fail_remote(rmt, "failed to receive valid message");
 		return;
 	}
-
-	parse_message(&rmt->recv_msgbuf, &msg);
 
 	switch (msg.type) {
 	case MT_READY:
@@ -714,31 +734,17 @@ static void read_rmtdata(struct remote* rmt)
 static void write_rmtdata(struct remote* rmt)
 {
 	int status;
-	struct message* msg;
 
-	if (!rmt->send_msgbuf.msgbuf) {
-		msg = dequeue_message(rmt);
-		assert(msg);
-		unparse_message(msg, &rmt->send_msgbuf);
-		free_message(msg);
-	}
-
-	status = drain_msgbuf(rmt->sock, &rmt->send_msgbuf);
-
+	status = send_message(&rmt->msgchan);
 	if (status < 0)
 		fail_remote(rmt, "failed to send message");
+	else /* this function should only be called with pending send data */
+		assert(status > 0);
 }
 
 static inline int have_outbound_data(const struct remote* rmt)
 {
-	return rmt->send_msgbuf.msgbuf || rmt->sendqueue.head;
-}
-
-static inline void fdset_add(int fd, fd_set* set, int* nfds)
-{
-	FD_SET(fd, set);
-	if (fd >= *nfds)
-		*nfds = fd + 1;
+	return mc_have_outbound_data(&rmt->msgchan);
 }
 
 static void handle_fds(void)
@@ -764,9 +770,9 @@ static void handle_fds(void)
 		}
 
 		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP) {
-			fdset_add(rmt->sock, &rfds, &nfds);
+			fdset_add(rmt->msgchan.recv_fd, &rfds, &nfds);
 			if (have_outbound_data(rmt))
-				fdset_add(rmt->sock, &wfds, &nfds);
+				fdset_add(rmt->msgchan.send_fd, &wfds, &nfds);
 		}
 	}
 
@@ -793,9 +799,9 @@ static void handle_fds(void)
 		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us) {
 			setup_remote(rmt);
 		} else {
-			if (FD_ISSET(rmt->sock, &rfds))
+			if (FD_ISSET(rmt->msgchan.recv_fd, &rfds))
 				read_rmtdata(rmt);
-			if (FD_ISSET(rmt->sock, &wfds))
+			if (FD_ISSET(rmt->msgchan.send_fd, &wfds))
 				write_rmtdata(rmt);
 		}
 	}
@@ -863,14 +869,14 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 
+	if (opmode == REMOTE) {
+		run_remote();
+	}
+
 	platform_event_fd = platform_init();
 	if (platform_event_fd < 0) {
 		elog("platform_init failed\n");
 		exit(1);
-	}
-
-	if (opmode == REMOTE) {
-		remote_loop();
 	}
 
 	cfgfile = fopen(argv[0], "r");

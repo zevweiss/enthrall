@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include "msgchan.h"
 #include "proto.h"
 
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
@@ -102,7 +103,6 @@ struct remote {
 	/* connection state */
 	connstate_t state;
 	pid_t sshpid;
-	int sock;
 
 	/*
 	 * How many times (since the last successful one) this remote's
@@ -113,15 +113,7 @@ struct remote {
 	/* When we'll next make a reconnection attempt (absolute microseconds) */
 	uint64_t next_reconnect_time;
 
-	/* For buffering partial inbound & outbound messages */
-	struct partrecv recv_msgbuf;
-	struct partsend send_msgbuf;
-
-	struct {
-		struct message* head;
-		struct message* tail;
-		int num_queued;
-	} sendqueue;
+	struct msgchan msgchan;
 
 	struct remote* next;
 };

@@ -43,6 +43,18 @@ int read_all(int fd, void* buf, size_t len)
 	return 0;
 }
 
+int get_fd_nonblock(int fd)
+{
+	int flags = fcntl(fd, F_GETFL);
+
+	if (flags == -1) {
+		perror("fcntl");
+		abort();
+	}
+
+	return !!(flags & O_NONBLOCK);
+}
+
 void set_fd_nonblock(int fd, int nb)
 {
 	int flags = fcntl(fd, F_GETFL);
