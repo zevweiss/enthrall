@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <assert.h>
-#include <wordexp.h>
 
 #include "types.h"
 #include "misc.h"
@@ -119,20 +118,21 @@ port_setting: KW_PORT EQ INTEGER { $$ = $3; }
 user_setting: KW_USER EQ STRING { $$ = $3; }
 bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; }
 remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; }
-remoteshell_setting: KW_REMOTESHELL EQ STRING { $$ = $3; }
+
+remoteshell_setting: KW_REMOTESHELL EQ STRING {
+	$$ = expand_word($3);
+	if (!$$) {
+		cfg_error(st, "bad syntax in remote-shell");
+		YYABORT;
+	}
+}
 
 identityfile_setting: KW_IDENTITYFILE EQ STRING {
-	wordexp_t exp;
-	/*
-	 * OSX's wordexp(3) sadly just ignores these flags, but I guess we
-	 * might as well try...
-	 */
-	if (wordexp($3, &exp, WRDE_NOCMD|WRDE_UNDEF) || exp.we_wordc != 1) {
+	$$ = expand_word($3);
+	if (!$$) {
 		cfg_error(st, "bad syntax in identity-file");
 		YYABORT;
 	}
-	$$ = xstrdup(exp.we_wordv[0]);
-	wordfree(&exp);
 }
 
 master_opt: remoteshell_setting {

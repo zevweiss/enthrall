@@ -88,4 +88,6 @@ int write_all(int fd, const void* buf, size_t len);
 void set_fd_nonblock(int fd, int nb);
 void set_fd_cloexec(int fd, int ce);
 
+char* expand_word(const char* wd);
+
 #endif /* MISC_H */

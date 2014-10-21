@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <wordexp.h>
 
 #include "misc.h"
 
@@ -80,4 +81,23 @@ void set_fd_cloexec(int fd, int ce)
 		perror("fcntl");
 		abort();
 	}
+}
+
+char* expand_word(const char* wd)
+{
+	char* ret;
+	wordexp_t exp;
+
+	/*
+	 * OSX's wordexp(3) sadly just ignores these flags, but I guess we
+	 * might as well try...
+	 */
+	if (wordexp(wd, &exp, WRDE_NOCMD|WRDE_UNDEF) || exp.we_wordc != 1)
+		return NULL;
+
+	ret = xstrdup(exp.we_wordv[0]);
+
+	wordfree(&exp);
+
+	return ret;
 }
