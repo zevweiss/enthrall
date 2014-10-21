@@ -81,6 +81,7 @@ struct ssh_config {
 	char* remoteshell;
 	int port;
 	char* bindaddr;
+	char* identityfile;
 	char* username;
 	char* remotecmd;
 };

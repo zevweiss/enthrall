@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <assert.h>
+#include <wordexp.h>
 
 #include "types.h"
 #include "misc.h"
@@ -64,6 +65,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_MASTER KW_REMOTE
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
+%token KW_IDENTITYFILE
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -74,6 +76,7 @@ static struct remote* new_uninit_remote(void)
 
 %type <i> port_setting
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
+%type <str> identityfile_setting
 
 %debug
 
@@ -118,6 +121,20 @@ bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; }
 remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; }
 remoteshell_setting: KW_REMOTESHELL EQ STRING { $$ = $3; }
 
+identityfile_setting: KW_IDENTITYFILE EQ STRING {
+	wordexp_t exp;
+	/*
+	 * OSX's wordexp(3) sadly just ignores these flags, but I guess we
+	 * might as well try...
+	 */
+	if (wordexp($3, &exp, WRDE_NOCMD|WRDE_UNDEF) || exp.we_wordc != 1) {
+		cfg_error(st, "bad syntax in identity-file");
+		YYABORT;
+	}
+	$$ = xstrdup(exp.we_wordv[0]);
+	wordfree(&exp);
+}
+
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
 }
@@ -126,6 +143,9 @@ master_opt: remoteshell_setting {
 }
 | bindaddr_setting {
 	st->cfg->ssh_defaults.bindaddr = $1;
+}
+| identityfile_setting {
+	st->cfg->ssh_defaults.identityfile = $1;
 }
 | user_setting {
 	st->cfg->ssh_defaults.username = $1;
@@ -196,6 +216,9 @@ remote_opt: KW_HOSTNAME EQ STRING {
 }
 | bindaddr_setting {
 	st->nextrmt->sshcfg.bindaddr = $1;
+}
+| identityfile_setting {
+	st->nextrmt->sshcfg.identityfile = $1;
 }
 | user_setting {
 	st->nextrmt->sshcfg.username = $1;

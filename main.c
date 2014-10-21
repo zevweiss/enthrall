@@ -153,6 +153,12 @@ static inline char* get_bindaddr(const struct remote* rmt)
 		: config->ssh_defaults.bindaddr;
 }
 
+static inline char* get_identityfile(const struct remote* rmt)
+{
+	return rmt->sshcfg.identityfile ? rmt->sshcfg.identityfile
+		: config->ssh_defaults.identityfile;
+}
+
 static inline char* get_username(const struct remote* rmt)
 {
 	return rmt->sshcfg.username ? rmt->sshcfg.username
@@ -178,6 +184,9 @@ static void exec_remote_shell(const struct remote* rmt)
 		/* placeholders */
 		NULL, /* -b */
 		NULL, /* bind address */
+		NULL, /* -oIdentitiesOnly */
+		NULL, /* -i */
+		NULL, /* identity file */
 		NULL, /* -p */
 		NULL, /* port */
 		NULL, /* -l */
@@ -198,6 +207,12 @@ static void exec_remote_shell(const struct remote* rmt)
 	if (get_bindaddr(rmt)) {
 		argv[nargs++] = "-b";
 		argv[nargs++] = get_bindaddr(rmt);
+	}
+
+	if (get_identityfile(rmt)) {
+		argv[nargs++] = "-oIdentitiesOnly=yes";
+		argv[nargs++] = "-i";
+		argv[nargs++] = get_identityfile(rmt);
 	}
 
 	if (get_username(rmt)) {
