@@ -136,40 +136,19 @@ static void server_mode(void)
 		handle_message();
 }
 
-static inline char* get_remoteshell(const struct remote* rmt)
-{
-	return rmt->sshcfg.remoteshell ? rmt->sshcfg.remoteshell
-		: config->ssh_defaults.remoteshell;
-}
+#define SSH_DEFAULT(type, name) \
+	static inline type get_##name(const struct remote* rmt) \
+	{ \
+		return rmt->sshcfg.name ? rmt->sshcfg.name \
+			: config->ssh_defaults.name; \
+	}
 
-static inline int get_port(const struct remote* rmt)
-{
-	return rmt->sshcfg.port ? rmt->sshcfg.port : config->ssh_defaults.port;
-}
-
-static inline char* get_bindaddr(const struct remote* rmt)
-{
-	return rmt->sshcfg.bindaddr ? rmt->sshcfg.bindaddr
-		: config->ssh_defaults.bindaddr;
-}
-
-static inline char* get_identityfile(const struct remote* rmt)
-{
-	return rmt->sshcfg.identityfile ? rmt->sshcfg.identityfile
-		: config->ssh_defaults.identityfile;
-}
-
-static inline char* get_username(const struct remote* rmt)
-{
-	return rmt->sshcfg.username ? rmt->sshcfg.username
-		: config->ssh_defaults.username;
-}
-
-static inline char* get_remotecmd(const struct remote* rmt)
-{
-	return rmt->sshcfg.remotecmd ? rmt->sshcfg.remotecmd
-		: config->ssh_defaults.remotecmd;
-}
+SSH_DEFAULT(char*, remoteshell)
+SSH_DEFAULT(int, port)
+SSH_DEFAULT(char*, bindaddr)
+SSH_DEFAULT(char*, identityfile)
+SSH_DEFAULT(char*, username)
+SSH_DEFAULT(char*, remotecmd)
 
 static void exec_remote_shell(const struct remote* rmt)
 {
