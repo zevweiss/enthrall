@@ -488,97 +488,6 @@ static void get_xevent(XEvent* e)
 	}
 }
 
-char* get_clipboard_text(void)
-{
-	XEvent ev;
-	Atom selection_atom = clipboard_xatoms[0].atom;
-	Atom proptype;
-	int propformat;
-	unsigned long nitems, bytes_remaining;
-	unsigned char* prop;
-	char* text;
-
-	/*
-	 * If we (think we) own the selection, just go ahead and use it
-	 * without going through all the X crap.
-	 */
-	if (xselection_owned_since != 0 && clipboard_text)
-		return xstrdup(clipboard_text);
-
-	/* FIXME: delete et_selection_data from xwin before requestion conversion */
-	XConvertSelection(xdisp, selection_atom, XA_STRING, et_selection_data,
-	                  xwin, last_xevent_time);
-	XFlush(xdisp);
-
-	for (;;) {
-		get_xevent(&ev);
-		if (ev.type != SelectionNotify) {
-			elog("dropping type %d event while awaiting selection...\n",
-			     ev.type);
-			continue;
-		}
-
-		if (ev.xselection.property == None)
-			return xstrdup("");
-
-		if (ev.xselection.selection != selection_atom)
-			elog("unexpected selection in SelectionNotify event\n");
-		if (ev.xselection.property != et_selection_data)
-			elog("unexpected property in SelectionNotify event\n");
-		if (ev.xselection.requestor != xwin)
-			elog("unexpected requestor in SelectionNotify event\n");
-		if (ev.xselection.target != XA_STRING)
-			elog("unexpected target in SelectionNotify event\n");
-
-		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
-		                   ev.xselection.property, 0, (1L << 24), True,
-		                   AnyPropertyType, &proptype, &propformat, &nitems,
-		                   &bytes_remaining, &prop);
-
-		if (proptype != XA_STRING && proptype != utf8_string_atom)
-			elog("selection window property has unexpected type\n");
-		if (bytes_remaining)
-			elog("%lu bytes remaining of selection window property\n",
-			        bytes_remaining);
-		if (propformat != 8) {
-			elog("selection window property has unexpected format (%d)\n",
-			     propformat);
-			return xstrdup("");
-		}
-
-		text = xmalloc(nitems + 1);
-		memcpy(text, prop, nitems);
-		text[nitems] = '\0';
-
-		XFree(prop);
-		return text;
-	}
-
-	return NULL;
-}
-
-int set_clipboard_text(const char* text)
-{
-	int i;
-	Atom atom;
-
-	xfree(clipboard_text);
-	clipboard_text = xstrdup(text);
-
-	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
-		atom = clipboard_xatoms[i].atom;
-		XSetSelectionOwner(xdisp, atom, xwin, last_xevent_time);
-		if (XGetSelectionOwner(xdisp, atom) != xwin) {
-			elog("failed to take ownership of X selection\n");
-			return -1;
-		}
-	}
-
-	xselection_owned_since = last_xevent_time;
-
-	return 0;
-}
-
 static Status send_selection_notify(const XSelectionRequestEvent* req, Atom property)
 {
 	XEvent ev;
@@ -734,4 +643,101 @@ void process_events(void)
 		get_xevent(&ev);
 		handle_event(&ev);
 	}
+}
+
+/* The longest we'll wait for a SelectionNotify event before giving up */
+#define SELECTION_TIMEOUT_US 100000
+
+char* get_clipboard_text(void)
+{
+	XEvent ev;
+	Atom selection_atom = clipboard_xatoms[0].atom;
+	Atom proptype;
+	int propformat;
+	unsigned long nitems, bytes_remaining;
+	unsigned char* prop;
+	char* text;
+	uint64_t before;
+
+	/*
+	 * If we (think we) own the selection, just go ahead and use it
+	 * without going through all the X crap.
+	 */
+	if (xselection_owned_since != 0 && clipboard_text)
+		return xstrdup(clipboard_text);
+
+	/* FIXME: delete et_selection_data from xwin before requestion conversion */
+	XConvertSelection(xdisp, selection_atom, XA_STRING, et_selection_data,
+	                  xwin, last_xevent_time);
+	XFlush(xdisp);
+
+	before = get_microtime();
+
+	while (get_microtime() - before < SELECTION_TIMEOUT_US) {
+		get_xevent(&ev);
+		if (ev.type != SelectionNotify) {
+			handle_event(&ev);
+			continue;
+		}
+
+		if (ev.xselection.property == None)
+			return xstrdup("");
+
+		if (ev.xselection.selection != selection_atom)
+			elog("unexpected selection in SelectionNotify event\n");
+		if (ev.xselection.property != et_selection_data)
+			elog("unexpected property in SelectionNotify event\n");
+		if (ev.xselection.requestor != xwin)
+			elog("unexpected requestor in SelectionNotify event\n");
+		if (ev.xselection.target != XA_STRING)
+			elog("unexpected target in SelectionNotify event\n");
+
+		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
+		                   ev.xselection.property, 0, (1L << 24), True,
+		                   AnyPropertyType, &proptype, &propformat, &nitems,
+		                   &bytes_remaining, &prop);
+
+		if (proptype != XA_STRING && proptype != utf8_string_atom)
+			elog("selection window property has unexpected type\n");
+		if (bytes_remaining)
+			elog("%lu bytes remaining of selection window property\n",
+			        bytes_remaining);
+		if (propformat != 8) {
+			elog("selection window property has unexpected format (%d)\n",
+			     propformat);
+			return xstrdup("");
+		}
+
+		text = xmalloc(nitems + 1);
+		memcpy(text, prop, nitems);
+		text[nitems] = '\0';
+
+		XFree(prop);
+		return text;
+	}
+
+	elog("timed out waiting for selection\n");
+	return xstrdup("");
+}
+
+int set_clipboard_text(const char* text)
+{
+	int i;
+	Atom atom;
+
+	xfree(clipboard_text);
+	clipboard_text = xstrdup(text);
+
+	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
+		atom = clipboard_xatoms[i].atom;
+		XSetSelectionOwner(xdisp, atom, xwin, last_xevent_time);
+		if (XGetSelectionOwner(xdisp, atom) != xwin) {
+			elog("failed to take ownership of X selection\n");
+			return -1;
+		}
+	}
+
+	xselection_owned_since = last_xevent_time;
+
+	return 0;
 }
