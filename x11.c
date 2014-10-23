@@ -359,10 +359,18 @@ void platform_exit(void)
 	XCloseDisplay(xdisp);
 }
 
+#if defined(CLOCK_MONOTONIC_RAW)
+#define CGT_CLOCK CLOCK_MONOTONIC_RAW
+#elif defined(CLOCK_UPTIME_PRECISE)
+#define CGT_CLOCK CLOCK_UPTIME_PRECISE
+#else
+#error no CGT_CLOCK!
+#endif
+
 uint64_t get_microtime(void)
 {
 	struct timespec ts;
-	if (clock_gettime(CLOCK_MONOTONIC_RAW, &ts)) {
+	if (clock_gettime(CGT_CLOCK, &ts)) {
 		perror("clock_gettime");
 		abort();
 	}

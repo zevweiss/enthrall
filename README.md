@@ -57,8 +57,8 @@ other user.
 
 ### Notes/Limitations/Known Issues
 
- - Currently only supports Linux as a master (perhaps more general X11
-   *nix, though that's untested) and OSX as a remote.
+ - Currently only supports X11 as a master (tested on Linux and
+   FreeBSD) and OSX as a remote.
 
  - OSX remotes with multiple screens don't currently work.
 
