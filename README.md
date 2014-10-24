@@ -57,8 +57,8 @@ other user.
 
 ### Notes/Limitations/Known Issues
 
- - Currently only supports X11 as a master (tested on Linux and
-   FreeBSD) and OSX as a remote.
+ - Currently only supports OSX as a remote (X11 should work as a
+   master or remote on Linux or FreeBSD).
 
  - OSX remotes with multiple screens don't currently work.
 
@@ -73,7 +73,7 @@ other user.
 
 ### TODO/Planned Features
 
- - Support for OSX masters and X11 remotes.
+ - Support for OSX as a master.
 
  - Switch-by-mouse (e.g. double-tap a screen edge)
 

@@ -8,6 +8,7 @@
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/XTest.h>
 
 #include "types.h"
 #include "misc.h"
@@ -37,6 +38,9 @@ static struct {
 
 static char* clipboard_text;
 static Time xselection_owned_since;
+
+/* Mask combining currently-applied modifiers and mouse buttons */
+static unsigned int xstate;
 
 static struct {
 	int32_t x, y;
@@ -304,6 +308,11 @@ int platform_init(int* fd)
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
 
+	if (!getenv("DISPLAY"))
+		setenv("DISPLAY", ":0", 0);
+
+	x11_keycodes_init();
+
 	xdisp = XOpenDisplay(NULL);
 	if (!xdisp) {
 		elog("X11 init: failed to open display\n");
@@ -357,6 +366,7 @@ void platform_exit(void)
 	XFreePixmap(xdisp, cursor_pixmap);
 	XDestroyWindow(xdisp, xwin);
 	XCloseDisplay(xdisp);
+	x11_keycodes_exit();
 }
 
 #if defined(CLOCK_MONOTONIC_RAW)
@@ -410,14 +420,62 @@ void move_mousepos(int32_t dx, int32_t dy)
 	XFlush(xdisp);
 }
 
+static const mousebutton_t pi_mousebuttons[] = {
+	[Button1] = MB_LEFT,
+	[Button2] = MB_CENTER,
+	[Button3] = MB_RIGHT,
+	[Button4] = MB_SCROLLUP,
+	[Button5] = MB_SCROLLDOWN,
+};
+
+static const struct {
+	unsigned int button, mask;
+} x11_mousebuttons[] = {
+	[MB_LEFT]       = { Button1, Button1Mask, },
+	[MB_CENTER]     = { Button2, Button2Mask, },
+	[MB_RIGHT]      = { Button3, Button3Mask, },
+	[MB_SCROLLUP]   = { Button4, Button4Mask, },
+	[MB_SCROLLDOWN] = { Button5, Button5Mask, },
+};
+
 void do_clickevent(mousebutton_t button, pressrel_t pr)
 {
-	elog("x11 clickevent not yet implemented\n");
+	XTestFakeButtonEvent(xdisp, LOOKUP(button, x11_mousebuttons).button,
+	                     pr == PR_PRESS, CurrentTime);
+	XFlush(xdisp);
+
+	/* Update modifier/mousebutton state */
+	if (pr == PR_PRESS)
+		xstate |= LOOKUP(button, x11_mousebuttons).mask;
+	else
+		xstate &= ~LOOKUP(button, x11_mousebuttons).mask;
+}
+
+static unsigned int modmask_for_xkeycode(KeyCode xkc)
+{
+	KeySym sym = XkbKeycodeToKeysym(xdisp, xkc, 0, 0);
+
+	if (!IsModifierKey(sym))
+		return 0;
+	else
+		return get_mod_mask(sym);
 }
 
 void do_keyevent(keycode_t key, pressrel_t pr)
 {
-	elog("x11 keyevent not yet implemented\n");
+	unsigned int modmask;
+	KeyCode xkc = keycode_to_xkeycode(xdisp, key);
+
+	XTestFakeKeyEvent(xdisp, xkc, pr == PR_PRESS, CurrentTime);
+	XFlush(xdisp);
+
+	modmask = modmask_for_xkeycode(xkc);
+	if (modmask) {
+		if (pr == PR_PRESS)
+			xstate |= modmask;
+		else
+			xstate &= ~modmask;
+	}
 }
 
 static inline const char* grab_failure_message(int status)
@@ -463,14 +521,6 @@ void ungrab_inputs(void)
 }
 
 static struct xypoint last_seen_mousepos;
-
-static const mousebutton_t pi_mousebuttons[] = {
-	[Button1] = MB_LEFT,
-	[Button2] = MB_CENTER,
-	[Button3] = MB_RIGHT,
-	[Button4] = MB_SCROLLUP,
-	[Button5] = MB_SCROLLDOWN,
-};
 
 static void get_xevent(XEvent* e)
 {

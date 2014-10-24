@@ -18,8 +18,8 @@ ifeq ($(OS),Darwin)
 	CFLAGS += -iframework $(FMWKDIR) $(foreach f,$(FRAMEWORKS),-framework $f)
 else
 	PLATFORM = x11
-	X11CFLAGS := $(shell pkg-config --cflags x11)
-	X11LIBS := $(shell pkg-config --libs x11)
+	X11CFLAGS := $(shell pkg-config --cflags x11 xtst)
+	X11LIBS := $(shell pkg-config --libs x11 xtst)
 	LIBS += $(X11LIBS)
 	CFLAGS += -D_GNU_SOURCE $(X11CFLAGS)
 

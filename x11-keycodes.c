@@ -1,5 +1,6 @@
 
 #include <X11/X.h>
+#include <X11/Xlib.h>
 #include <X11/keysym.h>
 
 #include "types.h"
@@ -210,10 +211,54 @@ static keycode_t basic_fromkeysym[] = {
 #endif
 };
 
+static struct {
+	KeySym* table;
+	unsigned int numents;
+} basic_tokeysym;
+
+void x11_keycodes_init(void)
+{
+	int i;
+	size_t sz;
+	keycode_t maxkc = 0;
+
+	/* Invert basic_fromkeysym into basic_tokeysym... */
+
+	for (i = 0; i < ARR_LEN(basic_fromkeysym); i++) {
+		if (basic_fromkeysym[i] > maxkc)
+			maxkc = basic_fromkeysym[i];
+	}
+
+	basic_tokeysym.numents = maxkc + 1;
+	sz = basic_tokeysym.numents * sizeof(*basic_tokeysym.table);
+	basic_tokeysym.table = xcalloc(sz);
+
+	for (i = 0; i < ARR_LEN(basic_fromkeysym); i++) {
+		if (basic_fromkeysym[i])
+			basic_tokeysym.table[basic_fromkeysym[i]] = i;
+	}
+}
+
+void x11_keycodes_exit(void)
+{
+	xfree(basic_tokeysym.table);
+}
+
 keycode_t keysym_to_keycode(KeySym sym)
 {
 	if (sym >= ARR_LEN(basic_fromkeysym))
 		return ET_null;
 	else
 		return basic_fromkeysym[sym];
+}
+
+KeyCode keycode_to_xkeycode(Display* disp, keycode_t kc)
+{
+	KeySym sym;
+
+	if (kc >= basic_tokeysym.numents)
+		return 0;
+
+	sym = basic_tokeysym.table[kc];
+	return XKeysymToKeycode(disp, sym);
 }
