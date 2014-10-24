@@ -87,6 +87,13 @@ static inline void xfree(void* p)
 
 void elog(const char* fmt, ...);
 
+typedef enum {
+	MASTER,
+	REMOTE,
+} opmode_t;
+
+extern opmode_t opmode;
+
 extern struct kvmap* remote_params;
 
 extern struct remote* active_remote;

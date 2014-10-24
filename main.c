@@ -29,10 +29,7 @@ char* progname;
 
 static int platform_event_fd;
 
-enum {
-	MASTER,
-	REMOTE,
-} opmode;
+opmode_t opmode;
 
 /* msgchan attached to stdin & stdout for use in remote mode */
 struct msgchan stdio_msgchan;

@@ -308,8 +308,8 @@ int platform_init(int* fd)
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
 
-	if (!getenv("DISPLAY"))
-		setenv("DISPLAY", ":0", 0);
+	if (opmode == REMOTE && kvmap_get(remote_params, "DISPLAY"))
+		setenv("DISPLAY", kvmap_get(remote_params, "DISPLAY"), 1);
 
 	x11_keycodes_init();
 
