@@ -35,6 +35,7 @@ integer		[-]?[0-9]+
 "bind-address"	return KW_BINDADDR;
 "identity-file"	return KW_IDENTITYFILE;
 "hotkey"	return KW_HOTKEY;
+"param"		return KW_PARAM;
 "switch"	return KW_SWITCH;
 "switch-to"	return KW_SWITCHTO;
 "reconnect"	return KW_RECONNECT;

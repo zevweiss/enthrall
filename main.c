@@ -226,6 +226,74 @@ static void exec_remote_shell(const struct remote* rmt)
 	exit(1);
 }
 
+struct kvmflatten_ctx {
+	char* buf;
+	size_t len;
+};
+
+static void flattencb(const char* key, const char* value, void* arg)
+{
+	struct kvmflatten_ctx* ctx = arg;
+	size_t klen = strlen(key), vlen = strlen(value);
+	size_t newlen = ctx->len + klen + 1 + vlen + 1;
+
+	ctx->buf = xrealloc(ctx->buf, newlen);
+	strcpy(ctx->buf + ctx->len, key);
+	ctx->len += klen + 1;
+	strcpy(ctx->buf + ctx->len, value);
+	ctx->len += vlen + 1;
+}
+
+/*
+ * Turn a kvmap into a flat buffer of concatenated NUL-terminated strings
+ * (e.g. "key1\0value1\0key2\0value2\0"), returning the total combined length
+ * of the buffer in *len.
+ */
+static void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
+{
+	struct kvmflatten_ctx ctx = { .buf = NULL, .len = 0, };
+
+	kvmap_foreach(kvm, flattencb, &ctx);
+
+	*len = ctx.len;
+
+	return ctx.buf;
+}
+
+/* Inverse of flatten_kvmap(). */
+static struct kvmap* unflatten_kvmap(const void* buf, size_t len)
+{
+	const char* k;
+	const char* v;
+	const char* p = buf;
+	size_t klen, vlen, remaining = len;
+	struct kvmap* kvm = new_kvmap();
+
+	while (remaining > 0) {
+		k = p;
+		klen = strnlen(p, remaining);
+		if (klen == remaining)
+			goto err;
+		p += klen + 1;
+		remaining -= klen + 1;
+
+		v = p;
+		vlen = strnlen(p, remaining);
+		if (vlen == remaining)
+			goto err;
+		p += vlen + 1;
+		remaining -= vlen + 1;
+
+		kvmap_put(kvm, k, v);
+	}
+
+	return kvm;
+
+err:
+	destroy_kvmap(kvm);
+	return NULL;
+}
+
 static void setup_remote(struct remote* rmt)
 {
 	int sockfds[2];
@@ -269,8 +337,7 @@ static void setup_remote(struct remote* rmt)
 	setupmsg = new_message(MT_SETUP);
 	setupmsg->type = MT_SETUP;
 	setupmsg->setup.prot_vers = PROT_VERSION;
-	setupmsg->extra.buf = NULL;
-	setupmsg->extra.len = 0;
+	setupmsg->extra.buf = flatten_kvmap(rmt->params, &setupmsg->extra.len);
 
 	enqueue_message(rmt, setupmsg);
 }
@@ -282,6 +349,7 @@ static void handle_remote_message(const struct message* msg)
 	switch (msg->type) {
 	case MT_SHUTDOWN:
 		mc_close(&stdio_msgchan);
+		destroy_kvmap(remote_params);
 		exit(0);
 
 	case MT_MOVEREL:
@@ -360,6 +428,8 @@ static void handle_remote_fds(void)
 	}
 }
 
+struct kvmap* remote_params;
+
 static void run_remote(void)
 {
 	struct message setupmsg;
@@ -383,6 +453,12 @@ static void run_remote(void)
 
 	if (setupmsg.setup.prot_vers != PROT_VERSION) {
 		elog("unsupported protocol version %d\n", setupmsg.setup.prot_vers);
+		exit(1);
+	}
+
+	remote_params = unflatten_kvmap(setupmsg.extra.buf, setupmsg.extra.len);
+	if (!remote_params) {
+		elog("failed to unflatted remote-params kvmap\n");
 		exit(1);
 	}
 

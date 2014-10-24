@@ -46,6 +46,7 @@ static struct remote* new_uninit_remote(void)
 	rmt->sshpid = -1;
 	rmt->msgchan.send_fd = rmt->msgchan.recv_fd = -1;
 	rmt->state = CS_NEW;
+	rmt->params = new_kvmap();
 
 	return rmt;
 }
@@ -65,7 +66,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_MASTER KW_REMOTE
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
-%token KW_IDENTITYFILE
+%token KW_IDENTITYFILE KW_PARAM
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -226,6 +227,11 @@ remote_opt: KW_HOSTNAME EQ STRING {
 }
 | remotecmd_setting {
 	st->nextrmt->sshcfg.remotecmd = $1;
+}
+| KW_PARAM LBRACKET STRING RBRACKET EQ STRING {
+	kvmap_put(st->nextrmt->params, $3, $6);
+	xfree($3);
+	xfree($6);
 }
 | DIRECTION EQ node {
 	st->nextrmt->neighbors[$1] = $3;

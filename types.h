@@ -6,6 +6,7 @@
 
 #include "msgchan.h"
 #include "proto.h"
+#include "kvmap.h"
 
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
 struct xypoint {
@@ -96,6 +97,8 @@ struct remote {
 	char* hostname;
 
 	struct ssh_config sshcfg;
+
+	struct kvmap* params;
 
 	/* neighbors */
 	struct noderef neighbors[NUM_DIRECTIONS];

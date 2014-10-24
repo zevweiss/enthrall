@@ -35,6 +35,16 @@ static inline void* xcalloc(size_t s)
 	return p;
 }
 
+static inline void* xrealloc(void* p, size_t s)
+{
+	void* newp = realloc(p, s);
+	if (!newp) {
+		perror("realloc");
+		abort();
+	}
+	return newp;
+}
+
 static inline char* xstrdup(const char* str)
 {
 	char* s = strdup(str);
@@ -76,6 +86,8 @@ static inline void xfree(void* p)
 }
 
 void elog(const char* fmt, ...);
+
+extern struct kvmap* remote_params;
 
 extern struct remote* active_remote;
 void send_keyevent(keycode_t kc, pressrel_t pr);
