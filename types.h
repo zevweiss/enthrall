@@ -118,6 +118,14 @@ struct remote {
 
 	struct msgchan msgchan;
 
+	/*
+	 * List of messages to be sent in the future, sorted in order
+	 * increasing sendtime.  A linked list is obviously an inefficient way
+	 * to go about this, but it's (at least at time of writing...) low-use
+	 * enough that it shouldn't matter.
+	 */
+	struct message* scheduled_messages;
+
 	struct remote* next;
 };
 

@@ -31,6 +31,15 @@ static int platform_event_fd;
 
 opmode_t opmode;
 
+struct scheduled_call {
+	void (*fn)(void* arg);
+	void* arg;
+	uint64_t calltime;
+	struct scheduled_call* next;
+};
+
+static struct scheduled_call* scheduled_calls;
+
 /* msgchan attached to stdin & stdout for use in remote mode */
 struct msgchan stdio_msgchan;
 
@@ -68,6 +77,38 @@ static inline void fdset_add(int fd, fd_set* set, int* nfds)
 		*nfds = fd + 1;
 }
 
+static void schedule_call(void (*fn)(void* arg), void* arg, uint64_t when)
+{
+	struct scheduled_call* call;
+	struct scheduled_call** prevnext;
+	struct scheduled_call* newcall = xmalloc(sizeof(*newcall));
+	newcall->fn = fn;
+	newcall->arg = arg;
+	newcall->calltime = when;
+
+	for (prevnext = &scheduled_calls, call = *prevnext;
+	     call;
+	     prevnext = &call->next, call = call->next) {
+		if (newcall->calltime < call->calltime)
+			break;
+	}
+
+	newcall->next = call;
+	*prevnext = newcall;
+}
+
+static void run_scheduled_calls(uint64_t when)
+{
+	struct scheduled_call* call;
+
+	while (scheduled_calls && scheduled_calls->calltime <= when) {
+		call = scheduled_calls;
+		scheduled_calls = call->next;
+		call->fn(call->arg);
+		xfree(call);
+	}
+}
+
 static void set_clipboard_from_buf(const void* buf, size_t len)
 {
 	char* tmp;
@@ -87,9 +128,17 @@ static void disconnect_remote(struct remote* rmt)
 {
 	pid_t pid;
 	int status;
+	struct message* msg;
 
 	/* Close fds and reset send & receive queues/buffers */
 	mc_close(&rmt->msgchan);
+
+	/* Clear out scheduled messages */
+	while (rmt->scheduled_messages) {
+		msg = rmt->scheduled_messages;
+		rmt->scheduled_messages = msg->next;
+		free_message(msg);
+	}
 
 	/*
 	 * A note on signal choice here: initially this used SIGTERM (which
@@ -147,6 +196,22 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 {
 	if (mc_enqueue_message(&rmt->msgchan, msg))
 		fail_remote(rmt, "send backlog exceeded");
+}
+
+static void schedule_message(struct remote* rmt, struct message* newmsg)
+{
+	struct message* msg;
+	struct message** prevnext;
+
+	for (prevnext = &rmt->scheduled_messages, msg = *prevnext;
+	     msg;
+	     prevnext = &msg->next, msg = msg->next) {
+		if (newmsg->sendtime < msg->sendtime)
+			break;
+	}
+
+	newmsg->next = msg;
+	*prevnext = newmsg;
 }
 
 #define SSH_DEFAULT(type, name) \
@@ -885,6 +950,17 @@ static inline int remote_live(const struct remote* rmt)
 	return rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP;
 }
 
+static void enqueue_scheduled_messages(struct remote* rmt, uint64_t when)
+{
+	struct message* msg;
+
+	while (rmt->scheduled_messages && rmt->scheduled_messages->sendtime <= when) {
+		msg = rmt->scheduled_messages;
+		rmt->scheduled_messages = msg->next;
+		enqueue_message(rmt, msg);
+	}
+}
+
 static void handle_fds(void)
 {
 	int status, nfds = 0;
@@ -892,32 +968,42 @@ static void handle_fds(void)
 	struct remote* rmt;
 	struct timeval recon_wait;
 	struct timeval* sel_wait;
-	uint64_t maxwait_us, now_us, next_reconnect_time = UINT64_MAX;
+	uint64_t maxwait_us, now_us, next_scheduled_event = UINT64_MAX;
 
 	FD_ZERO(&rfds);
 	FD_ZERO(&wfds);
 
 	now_us = get_microtime();
 
+	run_scheduled_calls(now_us);
+
+	if (scheduled_calls && scheduled_calls->calltime < next_scheduled_event)
+		next_scheduled_event = scheduled_calls->calltime;
+
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		if (rmt->state == CS_FAILED) {
 			if (rmt->next_reconnect_time < now_us)
 				setup_remote(rmt);
-			else if (rmt->next_reconnect_time < next_reconnect_time)
-				next_reconnect_time = rmt->next_reconnect_time;
+			else if (rmt->next_reconnect_time < next_scheduled_event)
+				next_scheduled_event = rmt->next_reconnect_time;
 		}
 
 		if (remote_live(rmt)) {
+			enqueue_scheduled_messages(rmt, now_us);
 			fdset_add(rmt->msgchan.recv_fd, &rfds, &nfds);
 			if (have_outbound_data(rmt))
 				fdset_add(rmt->msgchan.send_fd, &wfds, &nfds);
+
+			if (rmt->scheduled_messages
+			    && rmt->scheduled_messages->sendtime < next_scheduled_event)
+				next_scheduled_event = rmt->scheduled_messages->sendtime;
 		}
 	}
 
 	fdset_add(platform_event_fd, &rfds, &nfds);
 
-	if (next_reconnect_time != UINT64_MAX) {
-		maxwait_us = next_reconnect_time - now_us;
+	if (next_scheduled_event != UINT64_MAX) {
+		maxwait_us = next_scheduled_event - now_us;
 		recon_wait.tv_sec = maxwait_us / 1000000;
 		recon_wait.tv_usec = maxwait_us % 1000000;
 		sel_wait = &recon_wait;
@@ -933,10 +1019,23 @@ static void handle_fds(void)
 
 	now_us = get_microtime();
 
+	/*
+	 * I think the setup_remote(), enqueue_scheduled_messages(), and
+	 * run_scheduled_calls() calls here are actually unnecessary...could
+	 * just let each happen in the pre-select() part of the next iteration
+	 * of the loop.
+	 */
+
+	run_scheduled_calls(now_us);
+
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+
 		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us) {
 			setup_remote(rmt);
 		} else {
+			if (remote_live(rmt))
+				enqueue_scheduled_messages(rmt, now_us);
+
 			if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
 				read_rmtdata(rmt);
 

@@ -99,6 +99,9 @@ struct message {
 		void* buf;
 	} extra;
 
+	/* Time at which this message should be sent (not on-wire) */
+	uint64_t sendtime;
+
 	/* For linking into a list (doesn't exist on-wire) */
 	struct message* next;
 };
