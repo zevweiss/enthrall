@@ -124,6 +124,9 @@ int platform_init(int* fd)
 		return -1;
 	}
 
+	/* Initialize to "normal" gamma */
+	CGDisplayRestoreColorSyncSettings();
+
 	setup_gamma_table(&orig_gamma, CGDisplayGammaTableCapacity(display));
 	setup_gamma_table(&alt_gamma, orig_gamma.numents);
 
