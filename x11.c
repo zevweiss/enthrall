@@ -887,4 +887,5 @@ void set_display_brightness(float f)
 		scale_gamma(xrr.crtc_gammas[i].orig, xrr.crtc_gammas[i].alt, f);
 		XRRSetCrtcGamma(xdisp, xrr.resources->crtcs[i], xrr.crtc_gammas[i].alt);
 	}
+	XFlush(xdisp);
 }
