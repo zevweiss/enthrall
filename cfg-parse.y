@@ -62,7 +62,7 @@ static struct remote* new_uninit_remote(void)
 %token LBRACKET RBRACKET
 
 %token <i> INTEGER
-%token <d> REALNUM
+%token <d> DECIMAL
 %token <str> STRING
 %token <dir> DIRECTION
 
@@ -76,6 +76,7 @@ static struct remote* new_uninit_remote(void)
 
 %token END 0 "EOF"
 
+%type <d> realnum
 %type <noderef> node
 %type <action> action
 %type <switchind> switchind
@@ -121,6 +122,9 @@ master_opts: EMPTY
 | master_opt master_opts {
 };
 
+realnum: INTEGER { $$ = (double)$1; }
+| DECIMAL { $$ = $1; };
+
 port_setting: KW_PORT EQ INTEGER { $$ = $3; };
 user_setting: KW_USER EQ STRING { $$ = $3; };
 bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; };
@@ -142,11 +146,11 @@ identityfile_setting: KW_IDENTITYFILE EQ STRING {
 	}
 };
 
-switchind: KW_DIMINACTIVE REALNUM {
+switchind: KW_DIMINACTIVE realnum {
 	$$.type = SI_DIM_INACTIVE;
 	$$.brightness = $2;
 }
-| KW_FLASHACTIVE REALNUM REALNUM {
+| KW_FLASHACTIVE realnum realnum {
 	$$.type = SI_FLASH_ACTIVE;
 	$$.brightness = $2;
 	$$.duration = $3;

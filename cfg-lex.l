@@ -22,7 +22,7 @@ string          ["][^\"]*["]
 comment		[#][^\n]*
 space		[ \t\n]+
 integer		[-]?[0-9]+
-realnum		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
+decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 %%
 
@@ -76,10 +76,10 @@ realnum		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 	return INTEGER;
 }
 
-{realnum} {
+{decimal} {
 	char* tmp;
 	cfg_lval.d = strtod(cfg_text, &tmp);
-	return REALNUM;
+	return DECIMAL;
 }
 
 <*>.|\n {
