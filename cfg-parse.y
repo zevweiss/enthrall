@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <assert.h>
+#include <limits.h>
 
 #include "types.h"
 #include "misc.h"
@@ -40,6 +41,11 @@ static void cfg_error(struct cfg_pstate* st, char const*);
 }
 
 %{
+
+#define fail_parse(st, msg) do { \
+		cfg_error(st, msg); \
+		YYABORT; \
+	} while (0)
 
 static struct remote* new_uninit_remote(void)
 {
@@ -125,35 +131,39 @@ master_opts: EMPTY
 realnum: INTEGER { $$ = (double)$1; }
 | DECIMAL { $$ = $1; };
 
-port_setting: KW_PORT EQ INTEGER { $$ = $3; };
+port_setting: KW_PORT EQ INTEGER {
+	$$ = $3;
+	if ($$ < 1 || $$ > USHRT_MAX)
+		fail_parse(st, "invalid port number");
+};
 user_setting: KW_USER EQ STRING { $$ = $3; };
 bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; };
 remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; };
 
 remoteshell_setting: KW_REMOTESHELL EQ STRING {
 	$$ = expand_word($3);
-	if (!$$) {
-		cfg_error(st, "bad syntax in remote-shell");
-		YYABORT;
-	}
+	if (!$$)
+		fail_parse(st, "bad syntax in remote-shell");
 };
 
 identityfile_setting: KW_IDENTITYFILE EQ STRING {
 	$$ = expand_word($3);
-	if (!$$) {
-		cfg_error(st, "bad syntax in identity-file");
-		YYABORT;
-	}
+	if (!$$)
+		fail_parse(st, "bad syntax in identity-file");
 };
 
 switchind: KW_DIMINACTIVE realnum {
 	$$.type = SI_DIM_INACTIVE;
 	$$.brightness = $2;
+	if ($$.brightness < 0.0)
+		fail_parse(st, "dim-inactive argument must be >= 0");
 }
 | KW_FLASHACTIVE realnum realnum {
 	$$.type = SI_FLASH_ACTIVE;
 	$$.brightness = $2;
 	$$.duration = $3;
+	if ($$.brightness < 0.0 || $$.duration < 0.0)
+		fail_parse(st, "flash-active arguments must be >= 0");
 }
 | KW_NONE {
 	$$.type = SI_NONE;
