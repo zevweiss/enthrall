@@ -89,7 +89,7 @@ static struct remote* new_uninit_remote(void)
 %type <switchind> switchind
 %type <mouseswitch> mouseswitch
 
-%type <i> port_setting
+%type <i> port_setting fade_steps
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
 %type <str> identityfile_setting
 
@@ -154,18 +154,24 @@ identityfile_setting: KW_IDENTITYFILE EQ STRING {
 		fail_parse(st, "bad syntax in identity-file");
 };
 
+fade_steps: EMPTY { $$ = 1; }
+| INTEGER { $$ = $1; };
+
 switchind: KW_DIMINACTIVE realnum {
 	$$.type = SI_DIM_INACTIVE;
 	$$.brightness = $2;
 	if ($$.brightness < 0.0)
 		fail_parse(st, "dim-inactive argument must be >= 0");
 }
-| KW_FLASHACTIVE realnum realnum {
+| KW_FLASHACTIVE realnum realnum fade_steps {
 	$$.type = SI_FLASH_ACTIVE;
 	$$.brightness = $2;
 	$$.duration = (uint64_t)($3 * 1000000);
+	$$.fade_steps = $4;
 	if ($$.brightness < 0.0 || $3 < 0.0)
 		fail_parse(st, "flash-active arguments must be >= 0");
+	if ($$.fade_steps < 1)
+		fail_parse(st, "flash-active fade-steps must be >= 1");
 }
 | KW_NONE {
 	$$.type = SI_NONE;

@@ -533,7 +533,9 @@ static void schedule_brightness_change(struct remote* rmt, float f, uint64_t whe
 
 static void indicate_switch(struct remote* from, struct remote* to)
 {
-	uint64_t unflash_time;
+	int i;
+	uint64_t now_us, dim_time;
+	float frac, dim_level;
 	struct switch_indication* si = &config->switch_indication;
 
 	switch (si->type) {
@@ -547,8 +549,14 @@ static void indicate_switch(struct remote* from, struct remote* to)
 
 	case SI_FLASH_ACTIVE:
 		set_node_display_brightness(to, si->brightness);
-		unflash_time = get_microtime() + si->duration;
-		schedule_brightness_change(to, 1.0, unflash_time);
+		now_us = get_microtime();
+		for (i = 1; i < si->fade_steps; i++) {
+			frac = (float)i / (float)si->fade_steps;
+			dim_time = now_us + (uint64_t)(frac * (float)si->duration);
+			dim_level = si->brightness - (frac * (si->brightness - 1.0));
+			schedule_brightness_change(to, dim_level, dim_time);
+		}
+		schedule_brightness_change(to, 1.0, now_us + si->duration);
 		break;
 
 	default:

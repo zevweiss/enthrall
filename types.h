@@ -188,6 +188,7 @@ struct switch_indication {
 	} type;
 	float brightness;
 	uint64_t duration;
+	int fade_steps;
 };
 
 struct mouse_switch {
