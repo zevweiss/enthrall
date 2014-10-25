@@ -149,7 +149,7 @@ static CGPoint get_mousepos_cgpoint(void)
 
 #define NO_MOUSEBUTTON 0
 
-static void send_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button)
+static void post_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button)
 {
 	CGEventRef ev;
 
@@ -189,7 +189,7 @@ static uint64_t last_mouse_move;
 
 static void set_mousepos_cgpoint(CGPoint cgpt)
 {
-	send_mouseevent(cgpt, kCGEventMouseMoved, NO_MOUSEBUTTON);
+	post_mouseevent(cgpt, kCGEventMouseMoved, NO_MOUSEBUTTON);
 	last_mouse_move = get_microtime();
 }
 
@@ -207,11 +207,11 @@ void move_mousepos(int32_t dx, int32_t dy)
 
 	/* Sigh...why can't Quartz figure this out by itself? */
 	if (mouse_button_held(kCGMouseButtonLeft))
-		send_mouseevent(pt, kCGEventLeftMouseDragged, kCGMouseButtonLeft);
+		post_mouseevent(pt, kCGEventLeftMouseDragged, kCGMouseButtonLeft);
 	else if (mouse_button_held(kCGMouseButtonRight))
-		send_mouseevent(pt, kCGEventRightMouseDragged, kCGMouseButtonRight);
+		post_mouseevent(pt, kCGEventRightMouseDragged, kCGMouseButtonRight);
 	else if (mouse_button_held(kCGMouseButtonCenter))
-		send_mouseevent(pt, kCGEventOtherMouseDragged, kCGMouseButtonCenter);
+		post_mouseevent(pt, kCGEventOtherMouseDragged, kCGMouseButtonCenter);
 	else
 		set_mousepos_cgpoint(pt);
 }
