@@ -141,11 +141,21 @@ struct hotkey {
 	struct hotkey* next;
 };
 
+struct switch_indication {
+	enum {
+		SI_NONE = 0,
+		SI_DIM_INACTIVE,
+	} type;
+	float brightness;
+};
+
 struct config {
 	char* remote_shell;
 	char* bind_address;
 	struct remote* remotes;
 	struct hotkey* hotkeys;
+
+	struct switch_indication switch_indication;
 
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;

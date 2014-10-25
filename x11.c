@@ -683,7 +683,7 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 		return;
 	}
 
-	send_keyevent(kc, pr);
+	send_keyevent(active_remote, kc, pr);
 }
 
 static void handle_event(XEvent* ev)
@@ -694,7 +694,7 @@ static void handle_event(XEvent* ev)
 		    && ev->xmotion.y_root == screen_center.y)
 			break;
 
-		send_moverel(ev->xmotion.x_root - last_seen_mousepos.x,
+		send_moverel(active_remote, ev->xmotion.x_root - last_seen_mousepos.x,
 		             ev->xmotion.y_root - last_seen_mousepos.y);
 
 		if (abs(ev->xmotion.x_root - screen_center.x) > 1
@@ -702,7 +702,8 @@ static void handle_event(XEvent* ev)
 			set_mousepos(screen_center);
 			last_seen_mousepos = screen_center;
 		} else {
-			last_seen_mousepos = (struct xypoint){ .x = ev->xmotion.x_root, .y = ev->xmotion.y_root, };
+			last_seen_mousepos = (struct xypoint){ .x = ev->xmotion.x_root,
+			                                       .y = ev->xmotion.y_root, };
 		}
 		break;
 
@@ -717,11 +718,13 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case ButtonPress:
-		send_clickevent(LOOKUP(ev->xbutton.button, pi_mousebuttons), PR_PRESS);
+		send_clickevent(active_remote, LOOKUP(ev->xbutton.button, pi_mousebuttons),
+		                PR_PRESS);
 		break;
 
 	case ButtonRelease:
-		send_clickevent(LOOKUP(ev->xbutton.button, pi_mousebuttons), PR_RELEASE);
+		send_clickevent(active_remote, LOOKUP(ev->xbutton.button, pi_mousebuttons),
+		                PR_RELEASE);
 		break;
 
 	case SelectionRequest:

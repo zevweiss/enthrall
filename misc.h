@@ -97,9 +97,11 @@ extern opmode_t opmode;
 extern struct kvmap* remote_params;
 
 extern struct remote* active_remote;
-void send_keyevent(keycode_t kc, pressrel_t pr);
-void send_moverel(int32_t dx, int32_t dy);
-void send_clickevent(mousebutton_t button, pressrel_t pr);
+
+void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr);
+void send_moverel(struct remote* rmt, int32_t dx, int32_t dy);
+void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr);
+void send_setbrightness(struct remote* rmt, float f);
 
 int read_all(int fd, void* buf, size_t len);
 int write_all(int fd, const void* buf, size_t len);

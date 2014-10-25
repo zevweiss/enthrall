@@ -372,6 +372,10 @@ static void handle_remote_message(const struct message* msg)
 		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
 		break;
 
+	case MT_SETBRIGHTNESS:
+		set_display_brightness(msg->setbrightness.brightness);
+		break;
+
 	default:
 		elog("unhandled message type: %u\n", msg->type);
 		exit(1);
@@ -606,11 +610,11 @@ void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t*
 	}
 }
 
-void send_keyevent(keycode_t kc, pressrel_t pr)
+void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr)
 {
 	struct message* msg;
 
-	if (!active_remote)
+	if (!rmt)
 		return;
 
 	msg = new_message(MT_KEYEVENT);
@@ -618,14 +622,14 @@ void send_keyevent(keycode_t kc, pressrel_t pr)
 	msg->keyevent.keycode = kc;
 	msg->keyevent.pressrel = pr;
 
-	enqueue_message(active_remote, msg);
+	enqueue_message(rmt, msg);
 }
 
-void send_moverel(int32_t dx, int32_t dy)
+void send_moverel(struct remote* rmt, int32_t dx, int32_t dy)
 {
 	struct message* msg;
 
-	if (!active_remote)
+	if (!rmt)
 		return;
 
 	msg = new_message(MT_MOVEREL);
@@ -633,14 +637,14 @@ void send_moverel(int32_t dx, int32_t dy)
 	msg->moverel.dx = dx;
 	msg->moverel.dy = dy;
 
-	enqueue_message(active_remote, msg);
+	enqueue_message(rmt, msg);
 }
 
-void send_clickevent(mousebutton_t button, pressrel_t pr)
+void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr)
 {
 	struct message* msg;
 
-	if (!active_remote)
+	if (!rmt)
 		return;
 
 	msg = new_message(MT_CLICKEVENT);
@@ -648,7 +652,48 @@ void send_clickevent(mousebutton_t button, pressrel_t pr)
 	msg->clickevent.button = button;
 	msg->clickevent.pressrel = pr;
 
-	enqueue_message(active_remote, msg);
+	enqueue_message(rmt, msg);
+}
+
+void send_setbrightness(struct remote* rmt, float f)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_SETBRIGHTNESS);
+
+	msg->setbrightness.brightness = f;
+
+	enqueue_message(rmt, msg);
+}
+
+static void set_node_display_brightness(struct remote* rmt, float f)
+{
+	if (!rmt)
+		set_display_brightness(f);
+	else
+		send_setbrightness(rmt, f);
+}
+
+static void indicate_switch(struct remote* from, struct remote* to)
+{
+	struct switch_indication* si = &config->switch_indication;
+
+	switch (si->type) {
+	case SI_NONE:
+		break;
+
+	case SI_DIM_INACTIVE:
+		set_node_display_brightness(from, si->brightness);
+		set_node_display_brightness(to, 1.0);
+		break;
+
+	default:
+		elog("unknown switch_indication type %d\n", si->type);
+		break;
+	}
 }
 
 static struct xypoint saved_master_mousepos;
@@ -678,6 +723,9 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 		elog("unexpected neighbor type %d\n", n->type);
 		return;
 	}
+
+	/* Give visual indication even if no actual switch is performed */
+	indicate_switch(active_remote, switch_to);
 
 	if (switch_to == active_remote)
 		return;
@@ -776,6 +824,8 @@ static void read_rmtdata(struct remote* rmt)
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->alias);
+		if (config->switch_indication.type == SI_DIM_INACTIVE)
+			send_setbrightness(rmt, config->switch_indication.brightness);
 		break;
 
 	case MT_SETCLIPBOARD:

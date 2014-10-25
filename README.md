@@ -77,8 +77,9 @@ other user.
 
  - Switch-by-mouse (e.g. double-tap a screen edge)
 
- - Some visual indication of active node -- perhaps a screen flash
-   when switching to a node, and/or a dimmed screen on inactive nodes?
+ - Configurable key-remapping
+
+ - Possible additional switch-indicator settings: flash-active?
 
  - Daemonization
 

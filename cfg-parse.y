@@ -22,9 +22,11 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 %union {
 	char* str;
 	int64_t i;
+	double d;
 	direction_t dir;
 	struct noderef noderef;
 	struct action action;
+	struct switch_indication switchind;
 };
 
 %code {
@@ -60,13 +62,14 @@ static struct remote* new_uninit_remote(void)
 %token LBRACKET RBRACKET
 
 %token <i> INTEGER
+%token <d> REALNUM
 %token <str> STRING
 %token <dir> DIRECTION
 
 %token KW_MASTER KW_REMOTE
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
-%token KW_IDENTITYFILE KW_PARAM
+%token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -74,6 +77,7 @@ static struct remote* new_uninit_remote(void)
 
 %type <noderef> node
 %type <action> action
+%type <switchind> switchind
 
 %type <i> port_setting
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -116,10 +120,10 @@ master_opts: EMPTY
 | master_opt master_opts {
 };
 
-port_setting: KW_PORT EQ INTEGER { $$ = $3; }
-user_setting: KW_USER EQ STRING { $$ = $3; }
-bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; }
-remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; }
+port_setting: KW_PORT EQ INTEGER { $$ = $3; };
+user_setting: KW_USER EQ STRING { $$ = $3; };
+bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; };
+remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; };
 
 remoteshell_setting: KW_REMOTESHELL EQ STRING {
 	$$ = expand_word($3);
@@ -127,7 +131,7 @@ remoteshell_setting: KW_REMOTESHELL EQ STRING {
 		cfg_error(st, "bad syntax in remote-shell");
 		YYABORT;
 	}
-}
+};
 
 identityfile_setting: KW_IDENTITYFILE EQ STRING {
 	$$ = expand_word($3);
@@ -135,7 +139,12 @@ identityfile_setting: KW_IDENTITYFILE EQ STRING {
 		cfg_error(st, "bad syntax in identity-file");
 		YYABORT;
 	}
-}
+};
+
+switchind: KW_DIMINACTIVE REALNUM {
+	$$.type = SI_DIM_INACTIVE;
+	$$.brightness = $2;
+};
 
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
@@ -154,6 +163,9 @@ master_opt: remoteshell_setting {
 }
 | remotecmd_setting {
 	st->cfg->ssh_defaults.remotecmd = $1;
+}
+| KW_SWITCHINDICATOR EQ switchind {
+	st->cfg->switch_indication = $3;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));

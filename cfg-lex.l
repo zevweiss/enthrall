@@ -22,6 +22,7 @@ string          ["][^\"]*["]
 comment		[#][^\n]*
 space		[ \t\n]+
 integer		[-]?[0-9]+
+realnum		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 %%
 
@@ -39,6 +40,9 @@ integer		[-]?[0-9]+
 "switch"	return KW_SWITCH;
 "switch-to"	return KW_SWITCHTO;
 "reconnect"	return KW_RECONNECT;
+
+"switch-indicator"	return KW_SWITCHINDICATOR;
+"dim-inactive"		return KW_DIMINACTIVE;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;
@@ -68,6 +72,12 @@ integer		[-]?[0-9]+
 	char* tmp;
 	cfg_lval.i = strtoll(cfg_text, &tmp, 10);
 	return INTEGER;
+}
+
+{realnum} {
+	char* tmp;
+	cfg_lval.d = strtod(cfg_text, &tmp);
+	return REALNUM;
 }
 
 <*>.|\n {
