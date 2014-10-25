@@ -36,6 +36,8 @@ void ungrab_inputs(void);
 char* get_clipboard_text(void);
 int set_clipboard_text(const char* text);
 
+void set_display_brightness(float f);
+
 void process_events(void);
 
 /*

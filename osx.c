@@ -33,6 +33,8 @@
  */
 #define PLAINTEXT CFSTR("public.utf8-plain-text")
 
+static CGDirectDisplayID display;
+
 static PasteboardRef clipboard;
 
 static struct rectangle screenbounds;
@@ -47,6 +49,31 @@ static CGEventFlags modflags;
 
 #define MEDIAN(x, y) ((x) + (((y)-(x)) / 2))
 
+struct gamma_table {
+	CGGammaValue* red;
+	CGGammaValue* green;
+	CGGammaValue* blue;
+	uint32_t numents;
+};
+
+static void setup_gamma_table(struct gamma_table* gt, uint32_t size)
+{
+	gt->numents = size;
+	gt->red = xmalloc(size * sizeof(gt->red));
+	gt->green = xmalloc(size * sizeof(gt->green));
+	gt->blue = xmalloc(size * sizeof(gt->blue));
+}
+
+static void clear_gamma_table(struct gamma_table* gt)
+{
+	xfree(gt->red);
+	xfree(gt->green);
+	xfree(gt->blue);
+	memset(gt, 0, sizeof(*gt));
+}
+
+static struct gamma_table orig_gamma, alt_gamma;
+
 int platform_init(int* fd)
 {
 	CGError cgerr;
@@ -56,6 +83,7 @@ int platform_init(int* fd)
 	uint32_t num_active_displays;
 	kern_return_t kr;
 	NXEventHandle nxevh;
+	uint32_t numgaments;
 
 	kr = mach_timebase_info(&mach_timebase);
 	if (kr != KERN_SUCCESS) {
@@ -79,7 +107,9 @@ int platform_init(int* fd)
 		return -1;
 	}
 
-	bounds = CGDisplayBounds(active_displays[0]);
+	display = active_displays[0];
+
+	bounds = CGDisplayBounds(display);
 	screenbounds.x.min = CGRectGetMinX(bounds);
 	screenbounds.x.max = CGRectGetMaxX(bounds) - 1;
 	screenbounds.y.min = CGRectGetMinY(bounds);
@@ -94,6 +124,24 @@ int platform_init(int* fd)
 		return -1;
 	}
 
+	setup_gamma_table(&orig_gamma, CGDisplayGammaTableCapacity(display));
+	setup_gamma_table(&alt_gamma, orig_gamma.numents);
+
+	cgerr = CGGetDisplayTransferByTable(display, orig_gamma.numents, orig_gamma.red,
+	                                    orig_gamma.green, orig_gamma.blue, &numgaments);
+	if (cgerr) {
+		elog("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
+		elog("brightness adjustment will disabled\n", cgerr);
+		clear_gamma_table(&orig_gamma);
+		clear_gamma_table(&alt_gamma);
+	} else if (numgaments != orig_gamma.numents) {
+		elog("CGGetDisplayTransferByTable() behaves strangely: %u != %u\n",
+		     numgaments, orig_gamma.numents);
+		assert(numgaments < orig_gamma.numents);
+		orig_gamma.numents = numgaments;
+		alt_gamma.numents = numgaments;
+	}
+
 	*fd = -1;
 	return 0;
 }
@@ -101,6 +149,9 @@ int platform_init(int* fd)
 void platform_exit(void)
 {
 	CFRelease(clipboard);
+	CGDisplayRestoreColorSyncSettings();
+	clear_gamma_table(&orig_gamma);
+	clear_gamma_table(&alt_gamma);
 }
 
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
@@ -119,6 +170,49 @@ uint64_t get_microtime(void)
 {
 	uint64_t t = mach_absolute_time();
 	return ((t * mach_timebase.numer) / mach_timebase.denom) / 1000;
+}
+
+static void set_gamma_table(CGDirectDisplayID disp, const struct gamma_table* gt)
+{
+	CGError err;
+
+	if (!gt->numents)
+		return;
+
+	err = CGSetDisplayTransferByTable(disp, gt->numents, gt->red, gt->green, gt->blue);
+	if (err)
+		elog("CGSetDisplayTransferByTable() failed (%d)\n", err);
+}
+
+static inline CGGammaValue scale_gamma(CGGammaValue g, float scale)
+{
+	CGGammaValue res = g * scale;
+	if (res > 1.0)
+		return 1.0;
+	else if (res < 0.0)
+		return 0.0;
+	else
+		return res;
+}
+
+static void scale_gamma_table(const struct gamma_table* from, struct gamma_table* to,
+                              float scale)
+{
+	uint32_t i;
+
+	assert(from->numents == to->numents);
+
+	for (i = 0; i < to->numents; i++) {
+		to->red[i] = scale_gamma(from->red[i], scale);
+		to->green[i] = scale_gamma(from->green[i], scale);
+		to->blue[i] = scale_gamma(from->blue[i], scale);
+	}
+}
+
+void set_display_brightness(float f)
+{
+	scale_gamma_table(&orig_gamma, &alt_gamma, f);
+	set_gamma_table(display, &alt_gamma);
 }
 
 static inline uint32_t cgfloat_to_u32(CGFloat f)

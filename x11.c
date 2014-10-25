@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <limits.h>
+#include <math.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -9,6 +10,7 @@
 #include <X11/Xutil.h>
 #include <X11/XKBlib.h>
 #include <X11/extensions/XTest.h>
+#include <X11/extensions/Xrandr.h>
 
 #include "types.h"
 #include "misc.h"
@@ -27,6 +29,17 @@ static Atom et_selection_data;
 static Atom utf8_string_atom;
 
 static Time last_xevent_time;
+
+struct crtc_gamma {
+	XRRCrtcGamma* orig;
+	XRRCrtcGamma* alt;
+};
+
+static struct {
+	XRRScreenConfiguration* config;
+	XRRScreenResources* resources;
+	struct crtc_gamma* crtc_gammas;
+} xrr;
 
 static struct {
 	const char* name;
@@ -300,6 +313,44 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	return 0;
 }
 
+static void xrr_init(void)
+{
+	int i;
+
+	/* FIXME: better error-handling would be nice */
+	xrr.config = XRRGetScreenInfo(xdisp, xrootwin);
+	if (!xrr.config) {
+		elog("XRRGetScreenInfo() failed\n");
+		abort();
+	}
+	xrr.resources = XRRGetScreenResources(xdisp, xrootwin);
+	if (!xrr.resources) {
+		elog("XRRGetScreenResources() failed\n");
+		abort();
+	}
+
+	xrr.crtc_gammas = xmalloc(xrr.resources->ncrtc * sizeof(*xrr.crtc_gammas));
+
+	for (i = 0; i < xrr.resources->ncrtc; i++) {
+		xrr.crtc_gammas[i].orig = XRRGetCrtcGamma(xdisp, xrr.resources->crtcs[i]);
+		xrr.crtc_gammas[i].alt = XRRAllocGamma(xrr.crtc_gammas[i].orig->size);
+	}
+}
+
+static void xrr_exit(void)
+{
+	int i;
+
+	for (i = 0; i < xrr.resources->ncrtc; i++) {
+		XRRFreeGamma(xrr.crtc_gammas[i].orig);
+		XRRFreeGamma(xrr.crtc_gammas[i].alt);
+	}
+	xfree(xrr.crtc_gammas);
+
+	XRRFreeScreenResources(xrr.resources);
+	XRRFreeScreenConfigInfo(xrr.config);
+}
+
 int platform_init(int* fd)
 {
 	int i;
@@ -355,6 +406,8 @@ int platform_init(int* fd)
 	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
 	                      | get_mod_mask(XK_Num_Lock));
 
+	xrr_init();
+
 	*fd = XConnectionNumber(xdisp);
 
 	return 0;
@@ -362,6 +415,7 @@ int platform_init(int* fd)
 
 void platform_exit(void)
 {
+	xrr_exit();
 	XFreeCursor(xdisp, xcursor_blank);
 	XFreePixmap(xdisp, cursor_pixmap);
 	XDestroyWindow(xdisp, xwin);
@@ -798,4 +852,36 @@ int set_clipboard_text(const char* text)
 	xselection_owned_since = last_xevent_time;
 
 	return 0;
+}
+
+static inline unsigned short scale_gamma_val(unsigned short g, float f)
+{
+	float fres = (float)g * f;
+	if (fres > (float)USHRT_MAX)
+		return USHRT_MAX;
+	else
+		return lrintf(fres);
+}
+
+static void scale_gamma(const XRRCrtcGamma* from, XRRCrtcGamma* to, float f)
+{
+	int i;
+
+	assert(from->size == to->size);
+
+	for (i = 0; i < to->size; i++) {
+		to->red[i] = scale_gamma_val(from->red[i], f);
+		to->green[i] = scale_gamma_val(from->green[i], f);
+		to->blue[i] = scale_gamma_val(from->blue[i], f);
+	}
+}
+
+void set_display_brightness(float f)
+{
+	int i;
+
+	for (i = 0; i < xrr.resources->ncrtc; i++) {
+		scale_gamma(xrr.crtc_gammas[i].orig, xrr.crtc_gammas[i].alt, f);
+		XRRSetCrtcGamma(xdisp, xrr.resources->crtcs[i], xrr.crtc_gammas[i].alt);
+	}
 }
