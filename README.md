@@ -79,8 +79,6 @@ other user.
 
  - Configurable key-remapping
 
- - Possible additional switch-indicator settings: flash-active?
-
  - Daemonization
 
  - Configurable debug/logging levels instead of just haphazardly

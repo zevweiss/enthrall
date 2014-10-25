@@ -742,8 +742,34 @@ static void set_node_display_brightness(struct remote* rmt, float f)
 		send_setbrightness(rmt, f);
 }
 
+static void set_brightness_cb(void* arg)
+{
+	float* fp = arg;
+
+	set_display_brightness(*fp);
+
+	xfree(fp);
+}
+
+static void schedule_brightness_change(struct remote* rmt, float f, uint64_t when)
+{
+	struct message* msg;
+	float* fp;
+	if (rmt) {
+		msg = new_message(MT_SETBRIGHTNESS);
+		msg->setbrightness.brightness = f;
+		msg->sendtime = when;
+		schedule_message(rmt, msg);
+	} else {
+		fp = xmalloc(sizeof(*fp));
+		*fp = f;
+		schedule_call(set_brightness_cb, fp, when);
+	}
+}
+
 static void indicate_switch(struct remote* from, struct remote* to)
 {
+	uint64_t unflash_time;
 	struct switch_indication* si = &config->switch_indication;
 
 	switch (si->type) {
@@ -753,6 +779,12 @@ static void indicate_switch(struct remote* from, struct remote* to)
 	case SI_DIM_INACTIVE:
 		set_node_display_brightness(from, si->brightness);
 		set_node_display_brightness(to, 1.0);
+		break;
+
+	case SI_FLASH_ACTIVE:
+		set_node_display_brightness(to, si->brightness);
+		unflash_time = get_microtime() + (uint64_t)(si->duration * 1000000);
+		schedule_brightness_change(to, 1.0, unflash_time);
 		break;
 
 	default:
@@ -769,7 +801,8 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 
 	switch (n->type) {
 	case NT_NONE:
-		return;
+		switch_to = active_remote;
+		break;
 
 	case NT_MASTER:
 		switch_to = NULL;

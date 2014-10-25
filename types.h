@@ -153,8 +153,10 @@ struct switch_indication {
 	enum {
 		SI_NONE = 0,
 		SI_DIM_INACTIVE,
+		SI_FLASH_ACTIVE,
 	} type;
 	float brightness;
+	float duration;
 };
 
 struct config {

@@ -43,6 +43,7 @@ realnum		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 "switch-indicator"	return KW_SWITCHINDICATOR;
 "dim-inactive"		return KW_DIMINACTIVE;
+"flash-active"		return KW_FLASHACTIVE;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;

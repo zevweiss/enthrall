@@ -69,7 +69,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_MASTER KW_REMOTE
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
-%token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE
+%token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE KW_FLASHACTIVE
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -144,6 +144,11 @@ identityfile_setting: KW_IDENTITYFILE EQ STRING {
 switchind: KW_DIMINACTIVE REALNUM {
 	$$.type = SI_DIM_INACTIVE;
 	$$.brightness = $2;
+}
+| KW_FLASHACTIVE REALNUM REALNUM {
+	$$.type = SI_FLASH_ACTIVE;
+	$$.brightness = $2;
+	$$.duration = $3;
 };
 
 master_opt: remoteshell_setting {
