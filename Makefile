@@ -4,7 +4,7 @@ FLEX = flex
 BISON = bison
 
 CFLAGS = -Wall -Werror -ggdb3
-LIBS =
+LIBS = -lm
 
 OS := $(shell uname -s)
 

@@ -17,6 +17,7 @@ enum {
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
 	MT_LOGMSG,
+	MT_SETBRIGHTNESS,
 };
 
 typedef uint32_t msgtype_t;
@@ -58,6 +59,10 @@ struct logmsg_msg {
 	/* "extra" buffer has string to be logged */
 };
 
+struct setbrightness_msg {
+	float brightness;
+};
+
 /*
  * How many bytes we will always unconditionally read at the start of a
  * message (the initial fixed-size part).
@@ -85,6 +90,7 @@ struct message {
 		struct getclipboard_msg getclipboard;
 		struct setclipboard_msg setclipboard;
 		struct logmsg_msg logmsg;
+		struct setbrightness_msg setbrightness;
 	};
 
 	/* Extra data accompanying message (e.g. clipboard contents) */

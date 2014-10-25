@@ -2,11 +2,56 @@
 #include <errno.h>
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <math.h>
 
 #include <assert.h>
 
 #include "misc.h"
 #include "proto.h"
+
+/*
+ * Conversion from floats to and from a 32-bit fixed point wire-format
+ * representation with one sign bit, 15 bits of integer magnitude and 16 bits
+ * of fraction (with denominator 2^16).
+ */
+
+static float fixed_to_float(uint32_t fx)
+{
+	uint32_t i = (fx >> 16) & 0x7fff;
+	uint32_t num = fx & 0xffff;
+	uint32_t denom = 1U << 16;
+	float sign = (fx & (1U << 31)) ? -1.0 : 1.0;
+
+	return sign * ((float)i + ((float)num / (float)denom));
+}
+
+static uint32_t float_to_fixed(float orig_fp)
+{
+	float f_ipart, f_fpart;
+	uint32_t ipart, fpart;
+	uint32_t sign = 0;
+	float fp = orig_fp;
+
+	if (fp < 0.0) {
+		sign = 1U << 31;
+		fp = fabs(fp);
+	}
+
+	f_fpart = modff(fp, &f_ipart);
+
+	if (f_ipart > (float)0x7fff) {
+		elog("float_to_fixed() got out-of-range argument: %f\n", orig_fp);
+		abort();
+	}
+
+	fpart = lrintf(f_fpart * (float)(1 << 16));
+	assert(!(fpart & ~0xffff));
+
+	ipart = lrintf(f_ipart);
+	assert(!(ipart & ~0x7ffff));
+
+	return sign | (ipart << 16) | fpart;
+}
 
 static const size_t payload_sizes[] = {
 	[MT_SETUP] = sizeof(uint32_t),
@@ -18,6 +63,7 @@ static const size_t payload_sizes[] = {
 	[MT_GETCLIPBOARD] = 0,
 	[MT_SETCLIPBOARD] = 0,
 	[MT_LOGMSG] = 0,
+	[MT_SETBRIGHTNESS] = sizeof(uint32_t),
 };
 
 static void flatten_setup(const struct message* msg, void* buf)
@@ -112,6 +158,18 @@ static void unflatten_logmsg(const void* buf, struct message* msg)
 {
 }
 
+static void flatten_setbrightness(const struct message* msg, void* buf)
+{
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(float_to_fixed(msg->setbrightness.brightness));
+}
+
+static void unflatten_setbrightness(const void* buf, struct message* msg)
+{
+	const uint32_t* u32b = buf;
+	msg->setbrightness.brightness = fixed_to_float(ntohl(u32b[0]));
+}
+
 static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_SETUP] = flatten_setup,
 	[MT_READY] = flatten_ready,
@@ -122,6 +180,7 @@ static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_GETCLIPBOARD] = flatten_getclipboard,
 	[MT_SETCLIPBOARD] = flatten_setclipboard,
 	[MT_LOGMSG] = flatten_logmsg,
+	[MT_SETBRIGHTNESS] = flatten_setbrightness,
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
@@ -134,6 +193,7 @@ static void (*const unflatteners[])(const void*, struct message*) = {
 	[MT_GETCLIPBOARD] = unflatten_getclipboard,
 	[MT_SETCLIPBOARD] = unflatten_setclipboard,
 	[MT_LOGMSG] = unflatten_logmsg,
+	[MT_SETBRIGHTNESS] = unflatten_setbrightness,
 };
 
 static void flatten_message(const struct message* msg, void* buf)
