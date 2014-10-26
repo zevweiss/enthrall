@@ -783,7 +783,7 @@ static void indicate_switch(struct remote* from, struct remote* to)
 
 	case SI_FLASH_ACTIVE:
 		set_node_display_brightness(to, si->brightness);
-		unflash_time = get_microtime() + (uint64_t)(si->duration * 1000000);
+		unflash_time = get_microtime() + si->duration;
 		schedule_brightness_change(to, 1.0, unflash_time);
 		break;
 

@@ -163,7 +163,7 @@ struct switch_indication {
 		SI_FLASH_ACTIVE,
 	} type;
 	float brightness;
-	float duration;
+	uint64_t duration;
 };
 
 struct master {

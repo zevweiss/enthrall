@@ -161,8 +161,8 @@ switchind: KW_DIMINACTIVE realnum {
 | KW_FLASHACTIVE realnum realnum {
 	$$.type = SI_FLASH_ACTIVE;
 	$$.brightness = $2;
-	$$.duration = $3;
-	if ($$.brightness < 0.0 || $$.duration < 0.0)
+	$$.duration = (uint64_t)($3 * 1000000);
+	if ($$.brightness < 0.0 || $3 < 0.0)
 		fail_parse(st, "flash-active arguments must be >= 0");
 }
 | KW_NONE {
