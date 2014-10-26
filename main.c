@@ -898,23 +898,13 @@ static void bind_hotkeys(void)
 	}
 }
 
-static void read_rmtdata(struct remote* rmt)
+static void handle_master_message(struct remote* rmt, const struct message* msg)
 {
-	int status, loglen;
+	int loglen;
 	char* logmsg;
-	struct message msg;
-	struct message* msg2;
+	struct message* resp;
 
-	status = recv_message(&rmt->msgchan, &msg);
-	if (!status)
-		return;
-
-	if (status < 0) {
-		fail_remote(rmt, "failed to receive valid message");
-		return;
-	}
-
-	switch (msg.type) {
+	switch (msg->type) {
 	case MT_READY:
 		if (rmt->state != CS_SETTINGUP) {
 			fail_remote(rmt, "unexpected READY message");
@@ -933,26 +923,43 @@ static void read_rmtdata(struct remote* rmt)
 			     "remote '%s', ignoring.\n", rmt->alias);
 			break;
 		}
-		set_clipboard_from_buf(msg.extra.buf, msg.extra.len);
+		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
 		if (active_remote) {
-			msg2 = new_message(MT_SETCLIPBOARD);
-			msg2->extra.buf = get_clipboard_text();
-			msg2->extra.len = strlen(msg2->extra.buf);
-			enqueue_message(active_remote, msg2);
+			resp = new_message(MT_SETCLIPBOARD);
+			resp->extra.buf = get_clipboard_text();
+			resp->extra.len = strlen(resp->extra.buf);
+			enqueue_message(active_remote, resp);
 		}
 		break;
 
 	case MT_LOGMSG:
-		loglen = msg.extra.len > INT_MAX ? INT_MAX : msg.extra.len;
-		logmsg = msg.extra.buf;
+		loglen = msg->extra.len > INT_MAX ? INT_MAX : msg->extra.len;
+		logmsg = msg->extra.buf;
 		elog("%s: %.*s%s", rmt->alias, loglen, logmsg,
-		     logmsg[msg.extra.len-1] == '\n' ? "" : "\n");
+		     logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
 		break;
 
 	default:
 		fail_remote(rmt, "unexpected message type");
 		break;
 	}
+}
+
+static void read_rmtdata(struct remote* rmt)
+{
+	int status;
+	struct message msg;
+
+	status = recv_message(&rmt->msgchan, &msg);
+	if (!status)
+		return;
+
+	if (status < 0) {
+		fail_remote(rmt, "failed to receive valid message");
+		return;
+	}
+
+	handle_master_message(rmt, &msg);
 
 	if (msg.extra.len)
 		xfree(msg.extra.buf);
