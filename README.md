@@ -37,9 +37,10 @@ to restrict that key for use only with `enthrall`.
 Start `enthrall` from the master node with a single argument: the path
 to your config file.  It will connect to all defined remotes and start
 an instance of itself on each one.  You can then use hotkeys defined
-in your config file to change which machine will receive keyboard and
-mouse input.  See `example.conf` for a sample config file illustrating
-how various configuration options work.
+in your config file (or a mouse-gesture mechanism) to change which
+machine receives keyboard and mouse input.  See `example.conf` for a
+sample config file illustrating how various configuration options
+work.
 
 In the event of errors (e.g. network connection drops), `enthrall`
 will attempt to automatically reconnect to any failed remotes, though
@@ -50,17 +51,26 @@ action bound to a hotkey, however (see `example.conf`).
 ### Security
 
 Because `enthrall` does all its network communication over SSH, its
-traffic (keystrokes, mouse movements, clipboard contents) should be as
-secure as you have SSH configured to be.  `enthrall` checks that the
-config file is owned by the user running it and is not writable by any
-other user.
+traffic (keystrokes, mouse clicks and motion, clipboard contents)
+should be as secure as you have SSH configured to be.  `enthrall`
+checks that its config file is owned by the user running it and is not
+writable by any other user.
 
 ### Notes/Limitations/Known Issues
 
- - Currently only supports OSX as a remote (X11 should work as a
-   master or remote on Linux or FreeBSD).
+ - Mac OS X is currently only supported as a remote (X11 should work
+   as a master or remote on Linux or FreeBSD).
 
- - OSX remotes with multiple screens don't currently work.
+ - OS X remotes with multiple screens don't currently work.
+
+ - When using `switch-indicator = dim-inactive`, inactive OS X remotes
+   will sometimes (for reasons currently unknown) spontaneously reset
+   themselves to full brightness.
+
+ - Having windows of certain applications (Chrome or virt-manager for
+   example) at screen edges may inhibit `enthrall`'s detection of the
+   mouse pointer reaching those edges, disrupting mouse-switch
+   fuctionality.
 
  - X11 selection (a.k.a. "clipboard", colloquially) management is
    somewhat incomplete; very large copy/paste operations (tens of
@@ -73,7 +83,7 @@ other user.
 
 ### TODO/Planned Features
 
- - Support for OSX as a master.
+ - Support for OS X as a master.
 
  - Configurable key-remapping
 
