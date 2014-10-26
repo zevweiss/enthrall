@@ -158,9 +158,11 @@ static const struct xhotkey* find_hotkey(const XKeyEvent* kev)
 	return NULL;
 }
 
+#define XKEYMAP_SIZE 32
+
 struct hotkey_context {
 	const XKeyEvent* event;
-	char keymap_state[32];
+	char keymap_state[XKEYMAP_SIZE];
 };
 
 static int do_hotkey(const XKeyEvent* kev)
@@ -180,7 +182,7 @@ static int do_hotkey(const XKeyEvent* kev)
 	return !!k;
 }
 
-keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
+static keycode_t* get_keymap_modifiers(const char* keymap_state)
 {
 	int i, bit;
 	keycode_t etk;
@@ -190,12 +192,12 @@ keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
 	keycode_t* modkeys = xmalloc((maxmods + 1) * sizeof(*modkeys));
 	int modcount = 0;
 
-	for (i = 0; i < ARR_LEN(ctx->keymap_state); i++) {
-		if (!ctx->keymap_state[i])
+	for (i = 0; i < XKEYMAP_SIZE; i++) {
+		if (!keymap_state[i])
 			continue;
 
 		for (bit = 0; bit < CHAR_BIT; bit++) {
-			if (ctx->keymap_state[i] & (1 << bit)) {
+			if (keymap_state[i] & (1 << bit)) {
 				kc = (i * CHAR_BIT) + bit;
 				sym = XkbKeycodeToKeysym(xdisp, kc, 0, 0);
 				if (!IsModifierKey(sym))
@@ -213,6 +215,18 @@ out:
 	modkeys[modcount] = ET_null;
 
 	return modkeys;
+}
+
+keycode_t* get_current_modifiers(void)
+{
+	char keystate[XKEYMAP_SIZE];
+	XQueryKeymap(xdisp, keystate);
+	return get_keymap_modifiers(keystate);
+}
+
+keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
+{
+	return get_keymap_modifiers(ctx->keymap_state);
 }
 
 static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)

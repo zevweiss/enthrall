@@ -29,6 +29,7 @@ typedef void (*hotkey_callback_t)(hotkey_context_t ctx, void* arg);
 
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg);
 keycode_t* get_hotkey_modifiers(hotkey_context_t ctx);
+keycode_t* get_current_modifiers(void);
 
 int grab_inputs(void);
 void ungrab_inputs(void);

@@ -169,6 +169,12 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	return 1;
 }
 
+keycode_t* get_current_modifiers(void)
+{
+	elog("OSX get_current_modifiers() NYI\n");
+	return NULL;
+}
+
 keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
 {
 	elog("OSX get_hotkey_modifiers() not yet implemented\n");
