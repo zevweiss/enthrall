@@ -21,6 +21,7 @@ enum {
 	MT_LOGMSG,
 	MT_SETBRIGHTNESS,
 	MT_EDGEMASKCHANGE,
+	MT_SETMOUSEPOSSCREENREL,
 };
 
 typedef uint32_t msgtype_t;
@@ -73,6 +74,11 @@ struct edgemaskchange_msg {
 	float ypos;
 };
 
+struct setmouseposscreenrel_msg {
+	float xpos;
+	float ypos;
+};
+
 /*
  * How many bytes we will always unconditionally read at the start of a
  * message (the initial fixed-size part).
@@ -102,6 +108,7 @@ struct message {
 		struct logmsg_msg logmsg;
 		struct setbrightness_msg setbrightness;
 		struct edgemaskchange_msg edgemaskchange;
+		struct setmouseposscreenrel_msg setmouseposscreenrel;
 	};
 
 	/* Extra data accompanying message (e.g. clipboard contents) */
