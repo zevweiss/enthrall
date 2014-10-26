@@ -164,6 +164,7 @@ typedef enum {
 	AT_SWITCH,
 	AT_SWITCHTO,
 	AT_RECONNECT,
+	AT_QUIT,
 } actiontype_t;
 
 struct action {

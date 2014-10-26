@@ -43,6 +43,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "switch"	return KW_SWITCH;
 "switch-to"	return KW_SWITCHTO;
 "reconnect"	return KW_RECONNECT;
+"quit"		return KW_QUIT;
 
 "switch-indicator"	return KW_SWITCHINDICATOR;
 "dim-inactive"		return KW_DIMINACTIVE;

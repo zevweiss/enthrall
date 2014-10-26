@@ -673,6 +673,12 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		}
 		break;
 
+	case AT_QUIT:
+		for_each_remote (rmt)
+			disconnect_remote(rmt);
+		platform_exit();
+		exit(0);
+
 	default:
 		elog("unknown action type %d\n", a->type);
 		break;
@@ -1017,8 +1023,7 @@ void usage(FILE* out)
 
 int main(int argc, char** argv)
 {
-	int opt, status;
-	pid_t pid;
+	int opt;
 	struct config cfg;
 	struct remote* rmt;
 	FILE* cfgfile;
@@ -1111,13 +1116,4 @@ int main(int argc, char** argv)
 
 	for (;;)
 		handle_fds(platform_event_fd);
-
-	for_each_remote (rmt)
-		pid = wait(&status);
-
-	(void)pid;
-
-	platform_exit();
-
-	return 0;
 }
