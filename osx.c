@@ -314,6 +314,19 @@ void set_mousepos(struct xypoint pt)
 	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
 }
 
+void set_mousepos_screenrel(float xpos, float ypos)
+{
+	struct xypoint pt = {
+		.x = lrint(xpos * (float)screenbounds.x.max),
+		.y = lrint(ypos * (float)screenbounds.y.max),
+	};
+
+	assert(xpos >= 0.0 && xpos <= 1.0);
+	assert(ypos >= 0.0 && ypos <= 1.0);
+
+	set_mousepos(pt);
+}
+
 /* FIXME: deduplicating this and x11.c's version would be nice. */
 static dirmask_t get_mouse_edgemask(void)
 {

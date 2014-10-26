@@ -18,6 +18,7 @@ uint64_t get_microtime(void);
 
 struct xypoint get_mousepos(void);
 void set_mousepos(struct xypoint pos);
+void set_mousepos_screenrel(float xpos, float ypos);
 void move_mousepos(int32_t dx, int32_t dy);
 
 void do_clickevent(mousebutton_t button, pressrel_t pr);

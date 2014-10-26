@@ -585,6 +585,19 @@ void set_mousepos(struct xypoint pt)
 	XFlush(xdisp);
 }
 
+void set_mousepos_screenrel(float xpos, float ypos)
+{
+	struct xypoint pt = {
+		.x = lrint(xpos * (float)screen_dimensions.x),
+		.y = lrint(ypos * (float)screen_dimensions.y),
+	};
+
+	assert(xpos >= 0.0 && xpos <= 1.0);
+	assert(ypos >= 0.0 && ypos <= 1.0);
+
+	set_mousepos(pt);
+}
+
 void move_mousepos(int32_t dx, int32_t dy)
 {
 	XWarpPointer(xdisp, None, None, 0, 0, 0, 0, dx, dy);
