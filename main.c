@@ -580,7 +580,7 @@ static struct xypoint saved_master_mousepos;
  * Returns non-zero on a successful "real" switch, or zero if no actual switch
  * was performed (i.e. the switched-to node is the same as the current node).
  */
-static int switch_to_node(struct noderef* n, keycode_t* modkeys)
+static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
 {
 	struct remote* switch_to;
 
@@ -607,8 +607,14 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys)
 		return 0;
 	}
 
-	/* Give visual indication even if no actual switch is performed */
-	indicate_switch(active_remote, switch_to);
+	/*
+	 * If configured to do so, give visual indication even if no actual
+	 * switch is performed.
+	 */
+	if (switch_to != active_remote
+	    || config->indicate_nullswitch == NS_YES
+	    || (config->indicate_nullswitch == NS_HOTKEYONLY && from_hotkey))
+		indicate_switch(active_remote, switch_to);
 
 	if (switch_to == active_remote)
 		return 0;
@@ -632,11 +638,11 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys)
 	return 1;
 }
 
-static int switch_to_neighbor(direction_t dir, keycode_t* modkeys)
+static int switch_to_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
 {
 	struct noderef* n = &(active_remote ? active_remote->neighbors
 	                      : config->master.neighbors)[dir];
-	return switch_to_node(n, modkeys);
+	return switch_to_node(n, modkeys, from_hotkey);
 }
 
 static void action_cb(hotkey_context_t ctx, void* arg)
@@ -648,11 +654,11 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 
 	switch (a->type) {
 	case AT_SWITCH:
-		switch_to_neighbor(a->dir, modkeys);
+		switch_to_neighbor(a->dir, modkeys, 1);
 		break;
 
 	case AT_SWITCHTO:
-		switch_to_node(&a->node, modkeys);
+		switch_to_node(&a->node, modkeys, 1);
 		break;
 
 	case AT_RECONNECT:
@@ -779,7 +785,7 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 		duration = now_us - get_edgehist_entry(ehist, start_idx);
 		if (duration < config->mouseswitch.window) {
 			modkeys = get_current_modifiers();
-			if (switch_to_neighbor(dir, modkeys))
+			if (switch_to_neighbor(dir, modkeys, 0))
 				edgeswitch_reposition(dir, src_xpos, src_ypos);
 			xfree(modkeys);
 		}

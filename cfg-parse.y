@@ -71,6 +71,7 @@ static struct remote* new_uninit_remote(void)
 %token EQ
 %token LBRACE RBRACE
 %token LBRACKET RBRACKET
+%token KW_YES KW_NO
 
 %token <i> INTEGER
 %token <d> DECIMAL
@@ -81,7 +82,7 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
 %token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE KW_FLASHACTIVE
-%token KW_NONE KW_MOUSESWITCH KW_MULTITAP
+%token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_INDICATENULLSWITCH KW_HOTKEYONLY
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -94,7 +95,7 @@ static struct remote* new_uninit_remote(void)
 %type <mouseswitch> mouseswitch
 %type <dim_fade> dim_fade
 
-%type <i> port_setting fade_steps
+%type <i> port_setting fade_steps indicate_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
 %type <str> identityfile_setting
 
@@ -210,6 +211,10 @@ mouseswitch: KW_MULTITAP INTEGER realnum {
 	$$.type = MS_NONE;
 };
 
+indicate_nullswitch: KW_YES { $$ = NS_YES; }
+| KW_NO { $$ = NS_NO; }
+| KW_HOTKEYONLY { $$ = NS_HOTKEYONLY; };
+
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
 }
@@ -233,6 +238,9 @@ master_opt: remoteshell_setting {
 }
 | KW_MOUSESWITCH EQ mouseswitch {
 	st->cfg->mouseswitch = $3;
+}
+| KW_INDICATENULLSWITCH EQ indicate_nullswitch {
+	st->cfg->indicate_nullswitch = $3;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));

@@ -32,6 +32,9 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "]"	return RBRACKET;
 "="	return EQ;
 
+"yes"	return KW_YES;
+"no"	return KW_NO;
+
 "remote-shell"	return KW_REMOTESHELL;
 "bind-address"	return KW_BINDADDR;
 "identity-file"	return KW_IDENTITYFILE;
@@ -48,6 +51,9 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 "mouse-switch"	return KW_MOUSESWITCH;
 "multi-tap"	return KW_MULTITAP;
+
+"indicate-null-switch"	return KW_INDICATENULLSWITCH;
+"hotkey-only"		return KW_HOTKEYONLY;
 
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;

@@ -214,6 +214,12 @@ struct config {
 	struct switch_indication switch_indication;
 	struct mouse_switch mouseswitch;
 
+	enum {
+		NS_NO,
+		NS_YES,
+		NS_HOTKEYONLY,
+	} indicate_nullswitch;
+
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;
 
