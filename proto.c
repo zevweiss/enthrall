@@ -64,7 +64,7 @@ static const size_t payload_sizes[] = {
 	[MT_SETCLIPBOARD] = 0,
 	[MT_LOGMSG] = 0,
 	[MT_SETBRIGHTNESS] = sizeof(uint32_t),
-	[MT_EDGEMASKCHANGE] = 2 * sizeof(uint32_t),
+	[MT_EDGEMASKCHANGE] = 4 * sizeof(uint32_t),
 };
 
 static void flatten_setup(const struct message* msg, void* buf)
@@ -176,6 +176,8 @@ static void flatten_edgemaskchange(const struct message* msg, void* buf)
 	uint32_t* u32b = buf;
 	u32b[0] = htonl(msg->edgemaskchange.old);
 	u32b[1] = htonl(msg->edgemaskchange.new);
+	u32b[2] = htonl(float_to_fixed(msg->edgemaskchange.xpos));
+	u32b[3] = htonl(float_to_fixed(msg->edgemaskchange.ypos));
 }
 
 static void unflatten_edgemaskchange(const void* buf, struct message* msg)
@@ -183,6 +185,8 @@ static void unflatten_edgemaskchange(const void* buf, struct message* msg)
 	const uint32_t* u32b = buf;
 	msg->edgemaskchange.old = ntohl(u32b[0]);
 	msg->edgemaskchange.new = ntohl(u32b[1]);
+	msg->edgemaskchange.xpos = fixed_to_float(ntohl(u32b[2]));
+	msg->edgemaskchange.ypos = fixed_to_float(ntohl(u32b[3]));
 }
 
 static void (*const flatteners[])(const struct message*, void*) = {

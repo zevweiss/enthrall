@@ -69,6 +69,8 @@ struct setbrightness_msg {
 struct edgemaskchange_msg {
 	dirmask_t old;
 	dirmask_t new;
+	float xpos;
+	float ypos;
 };
 
 /*

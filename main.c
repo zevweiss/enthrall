@@ -500,6 +500,8 @@ static void send_edgemask_change_cb(dirmask_t old, dirmask_t new, float xpos, fl
 
 	msg->edgemaskchange.old = old;
 	msg->edgemaskchange.new = new;
+	msg->edgemaskchange.xpos = xpos;
+	msg->edgemaskchange.ypos = ypos;
 
 	mc_enqueue_message(&stdio_msgchan, msg);
 }
