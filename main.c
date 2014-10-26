@@ -23,6 +23,8 @@
 
 struct config* config;
 
+#define for_each_remote(r) for (r = config->remotes; r; r = r->next)
+
 struct remote* active_remote = NULL;
 
 char* progname;
@@ -314,13 +316,13 @@ static struct remote* find_remote(const char* name)
 	struct remote* rmt;
 
 	/* First search by alias */
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (!strcmp(name, rmt->alias))
 			return rmt;
 	}
 
 	/* if that fails, try hostnames */
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (!strcmp(name, rmt->hostname))
 			return rmt;
 	}
@@ -378,7 +380,7 @@ static void check_remotes(void)
 	for_each_direction (dir)
 		mark_reachable(&config->master.neighbors[dir]);
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (!rmt->reachable)
 			elog("Warning: remote '%s' is not reachable\n", rmt->alias);
 
@@ -663,7 +665,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 
 	case AT_RECONNECT:
 		now_us = get_microtime();
-		for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		for_each_remote (rmt) {
 			if (rmt->state == CS_PERMFAILED)
 				rmt->state = CS_FAILED;
 			rmt->failcount = 0;
@@ -939,7 +941,7 @@ static struct timeval* get_select_timeout(struct timeval* tv, uint64_t now_us)
 	if (scheduled_calls && scheduled_calls->calltime < next_scheduled_event)
 		next_scheduled_event = scheduled_calls->calltime;
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (rmt->state == CS_FAILED
 		    && rmt->next_reconnect_time < next_scheduled_event)
 			next_scheduled_event = rmt->next_reconnect_time;
@@ -972,7 +974,7 @@ static void handle_fds(int platform_event_fd)
 
 	run_scheduled_calls(now_us);
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us)
 			setup_remote(rmt);
 
@@ -992,7 +994,7 @@ static void handle_fds(int platform_event_fd)
 		exit(1);
 	}
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+	for_each_remote (rmt) {
 		if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
 			read_rmtdata(rmt);
 
@@ -1104,13 +1106,13 @@ int main(int argc, char** argv)
 	check_remotes();
 	bind_hotkeys();
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next)
+	for_each_remote (rmt)
 		setup_remote(rmt);
 
 	for (;;)
 		handle_fds(platform_event_fd);
 
-	for (rmt = config->remotes; rmt; rmt = rmt->next)
+	for_each_remote (rmt)
 		pid = wait(&status);
 
 	(void)pid;
