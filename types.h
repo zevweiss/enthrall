@@ -166,6 +166,10 @@ struct switch_indication {
 	float duration;
 };
 
+struct master {
+	struct noderef neighbors[NUM_DIRECTIONS];
+};
+
 struct config {
 	char* remote_shell;
 	char* bind_address;
@@ -177,8 +181,7 @@ struct config {
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;
 
-	/* master's neighbors */
-	struct noderef neighbors[NUM_DIRECTIONS];
+	struct master master;
 };
 
 #endif /* COMMONDEFS_H */

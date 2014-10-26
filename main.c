@@ -612,7 +612,7 @@ static void check_remotes(void)
 	int num_neighbors;
 
 	for_each_direction (dir)
-		mark_reachable(&config->neighbors[dir]);
+		mark_reachable(&config->master.neighbors[dir]);
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
 		if (!rmt->reachable)
@@ -847,7 +847,8 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 
 static void switch_to_neighbor(direction_t dir, keycode_t* modkeys)
 {
-	struct noderef* n = &(active_remote ? active_remote->neighbors : config->neighbors)[dir];
+	struct noderef* n = &(active_remote ? active_remote->neighbors
+	                      : config->master.neighbors)[dir];
 	switch_to_node(n, modkeys);
 }
 

@@ -198,7 +198,7 @@ master_opt: remoteshell_setting {
 	st->cfg->hotkeys = hk;
 }
 | DIRECTION EQ node {
-	st->cfg->neighbors[$1] = $3;
+	st->cfg->master.neighbors[$1] = $3;
 };
 
 action: KW_SWITCH DIRECTION {
