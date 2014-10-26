@@ -29,6 +29,10 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	struct action action;
 	struct switch_indication switchind;
 	struct mouse_switch mouseswitch;
+	struct {
+		float duration;
+		int numsteps;
+	} dim_fade;
 };
 
 %code {
@@ -88,6 +92,7 @@ static struct remote* new_uninit_remote(void)
 %type <action> action
 %type <switchind> switchind
 %type <mouseswitch> mouseswitch
+%type <dim_fade> dim_fade
 
 %type <i> port_setting fade_steps
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -157,11 +162,24 @@ identityfile_setting: KW_IDENTITYFILE EQ STRING {
 fade_steps: EMPTY { $$ = 1; }
 | INTEGER { $$ = $1; };
 
-switchind: KW_DIMINACTIVE realnum {
+dim_fade: EMPTY {
+	$$.duration = 0.0;
+	$$.numsteps = 1;
+}
+| realnum INTEGER {
+	$$.duration = $1;
+	$$.numsteps = $2;
+};
+
+switchind: KW_DIMINACTIVE realnum dim_fade {
 	$$.type = SI_DIM_INACTIVE;
 	$$.brightness = $2;
-	if ($$.brightness < 0.0)
-		fail_parse(st, "dim-inactive argument must be >= 0");
+	$$.duration = (uint64_t)($3.duration * 1000000);
+	$$.fade_steps = $3.numsteps;
+	if ($$.brightness < 0.0 || $3.duration < 0.0)
+		fail_parse(st, "dim-inactive arguments must be >= 0");
+	if ($$.fade_steps < 1)
+		fail_parse(st, "dim-inactive fade-steps must be >= 1");
 }
 | KW_FLASHACTIVE realnum realnum fade_steps {
 	$$.type = SI_FLASH_ACTIVE;

@@ -531,11 +531,25 @@ static void schedule_brightness_change(struct remote* rmt, float f, uint64_t whe
 	}
 }
 
-static void indicate_switch(struct remote* from, struct remote* to)
+static void transition_brightness(struct remote* node, float from, float to,
+                                  uint64_t duration, int steps)
 {
 	int i;
-	uint64_t now_us, dim_time;
-	float frac, dim_level;
+	float frac, level;
+	uint64_t time, now_us = get_microtime();
+
+	set_node_display_brightness(node, from);
+	for (i = 1; i < steps; i++) {
+		frac = (float)i / (float)steps;
+		time = now_us + (uint64_t)(frac * (float)duration);
+		level = from + (frac * (to - from));
+		schedule_brightness_change(node, level, time);
+	}
+	schedule_brightness_change(node, to, now_us + duration);
+}
+
+static void indicate_switch(struct remote* from, struct remote* to)
+{
 	struct switch_indication* si = &config->switch_indication;
 
 	switch (si->type) {
@@ -543,20 +557,15 @@ static void indicate_switch(struct remote* from, struct remote* to)
 		break;
 
 	case SI_DIM_INACTIVE:
-		set_node_display_brightness(from, si->brightness);
-		set_node_display_brightness(to, 1.0);
+		transition_brightness(from, 1.0, si->brightness, si->duration,
+		                      si->fade_steps);
+		transition_brightness(to, si->brightness, 1.0, si->duration,
+		                      si->fade_steps);
 		break;
 
 	case SI_FLASH_ACTIVE:
-		set_node_display_brightness(to, si->brightness);
-		now_us = get_microtime();
-		for (i = 1; i < si->fade_steps; i++) {
-			frac = (float)i / (float)si->fade_steps;
-			dim_time = now_us + (uint64_t)(frac * (float)si->duration);
-			dim_level = si->brightness - (frac * (si->brightness - 1.0));
-			schedule_brightness_change(to, dim_level, dim_time);
-		}
-		schedule_brightness_change(to, 1.0, now_us + si->duration);
+		transition_brightness(to, si->brightness, 1.0, si->duration,
+		                      si->fade_steps);
 		break;
 
 	default:
