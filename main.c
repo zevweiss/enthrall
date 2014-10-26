@@ -930,14 +930,40 @@ static void enqueue_scheduled_messages(struct remote* rmt, uint64_t when)
 	}
 }
 
+static struct timeval* get_select_timeout(struct timeval* tv, uint64_t now_us)
+{
+	const struct remote* rmt;
+	uint64_t maxwait_us;
+	uint64_t next_scheduled_event = UINT64_MAX;
+
+	if (scheduled_calls && scheduled_calls->calltime < next_scheduled_event)
+		next_scheduled_event = scheduled_calls->calltime;
+
+	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		if (rmt->state == CS_FAILED
+		    && rmt->next_reconnect_time < next_scheduled_event)
+			next_scheduled_event = rmt->next_reconnect_time;
+		else if (rmt->scheduled_messages
+		         && rmt->scheduled_messages->sendtime < next_scheduled_event)
+			next_scheduled_event = rmt->scheduled_messages->sendtime;
+	}
+
+	if (next_scheduled_event == UINT64_MAX)
+		return NULL;
+
+	maxwait_us = next_scheduled_event - now_us;
+	tv->tv_sec = maxwait_us / 1000000;
+	tv->tv_usec = maxwait_us % 1000000;
+	return tv;
+}
+
 static void handle_fds(int platform_event_fd)
 {
 	int status, nfds = 0;
 	fd_set rfds, wfds;
 	struct remote* rmt;
-	struct timeval recon_wait;
-	struct timeval* sel_wait;
-	uint64_t maxwait_us, now_us, next_scheduled_event = UINT64_MAX;
+	struct timeval sel_wait;
+	uint64_t now_us;
 
 	FD_ZERO(&rfds);
 	FD_ZERO(&wfds);
@@ -946,75 +972,36 @@ static void handle_fds(int platform_event_fd)
 
 	run_scheduled_calls(now_us);
 
-	if (scheduled_calls && scheduled_calls->calltime < next_scheduled_event)
-		next_scheduled_event = scheduled_calls->calltime;
-
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
-		if (rmt->state == CS_FAILED) {
-			if (rmt->next_reconnect_time < now_us)
-				setup_remote(rmt);
-			else if (rmt->next_reconnect_time < next_scheduled_event)
-				next_scheduled_event = rmt->next_reconnect_time;
-		}
+		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us)
+			setup_remote(rmt);
 
 		if (remote_live(rmt)) {
 			enqueue_scheduled_messages(rmt, now_us);
 			fdset_add(rmt->msgchan.recv_fd, &rfds, &nfds);
 			if (have_outbound_data(rmt))
 				fdset_add(rmt->msgchan.send_fd, &wfds, &nfds);
-
-			if (rmt->scheduled_messages
-			    && rmt->scheduled_messages->sendtime < next_scheduled_event)
-				next_scheduled_event = rmt->scheduled_messages->sendtime;
 		}
 	}
 
 	fdset_add(platform_event_fd, &rfds, &nfds);
 
-	if (next_scheduled_event != UINT64_MAX) {
-		maxwait_us = next_scheduled_event - now_us;
-		recon_wait.tv_sec = maxwait_us / 1000000;
-		recon_wait.tv_usec = maxwait_us % 1000000;
-		sel_wait = &recon_wait;
-	} else {
-		sel_wait = NULL;
-	}
-
-	status = select(nfds, &rfds, &wfds, NULL, sel_wait);
+	status = select(nfds, &rfds, &wfds, NULL, get_select_timeout(&sel_wait, now_us));
 	if (status < 0) {
 		perror("select");
 		exit(1);
 	}
 
-	now_us = get_microtime();
-
-	/*
-	 * I think the setup_remote(), enqueue_scheduled_messages(), and
-	 * run_scheduled_calls() calls here are actually unnecessary...could
-	 * just let each happen in the pre-select() part of the next iteration
-	 * of the loop.
-	 */
-
-	run_scheduled_calls(now_us);
-
 	for (rmt = config->remotes; rmt; rmt = rmt->next) {
+		if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
+			read_rmtdata(rmt);
 
-		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us) {
-			setup_remote(rmt);
-		} else {
-			if (remote_live(rmt))
-				enqueue_scheduled_messages(rmt, now_us);
-
-			if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
-				read_rmtdata(rmt);
-
-			/*
-			 * read_rmtdata() might have changed the remote's
-			 * status, so check remote_live() again
-			 */
-			if (remote_live(rmt) && FD_ISSET(rmt->msgchan.send_fd, &wfds))
-				write_rmtdata(rmt);
-		}
+		/*
+		 * read_rmtdata() might have changed the remote's status, so
+		 * check remote_live() again.
+		 */
+		if (remote_live(rmt) && FD_ISSET(rmt->msgchan.send_fd, &wfds))
+			write_rmtdata(rmt);
 	}
 
 	if (FD_ISSET(platform_event_fd, &rfds))
