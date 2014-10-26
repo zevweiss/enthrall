@@ -55,6 +55,9 @@ static Time xselection_owned_since;
 /* Mask combining currently-applied modifiers and mouse buttons */
 static unsigned int xstate;
 
+#define MouseButtonMask \
+	(Button1Mask|Button2Mask|Button3Mask|Button4Mask|Button5Mask)
+
 static struct {
 	int32_t x, y;
 } screen_dimensions;
@@ -586,7 +589,8 @@ void move_mousepos(int32_t dx, int32_t dy)
 {
 	XWarpPointer(xdisp, None, None, 0, 0, 0, 0, dx, dy);
 	XFlush(xdisp);
-	if (opmode == REMOTE)
+	/* Only trigger edge events if no mouse buttons are held */
+	if (opmode == REMOTE && !(xstate & MouseButtonMask))
 		check_mouse_edge(get_mousepos());
 }
 
@@ -822,7 +826,8 @@ static void handle_grabbed_mousemov(XMotionEvent* mev)
 
 static void handle_local_mousemove(XMotionEvent* mev)
 {
-	if (mouse_edge_handler)
+	/* Only trigger edge events when no mouse buttons are held */
+	if (mouse_edge_handler && !(mev->state & MouseButtonMask))
 		check_mouse_edge((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
 }
 

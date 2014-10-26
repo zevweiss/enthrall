@@ -294,6 +294,13 @@ static inline int mouse_button_held(CGMouseButton btn)
 	return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, btn);
 }
 
+static inline int any_mouse_buttons_held(void)
+{
+	return mouse_button_held(kCGMouseButtonLeft)
+		|| mouse_button_held(kCGMouseButtonRight)
+		|| mouse_button_held(kCGMouseButtonCenter);
+}
+
 static uint64_t last_mouse_move;
 
 static void set_mousepos_cgpoint(CGPoint cgpt)
@@ -353,7 +360,7 @@ void move_mousepos(int32_t dx, int32_t dy)
 	else
 		set_mousepos_cgpoint(pt);
 
-	if (opmode == REMOTE)
+	if (opmode == REMOTE && !any_mouse_buttons_held())
 		check_mouse_edge();
 }
 
