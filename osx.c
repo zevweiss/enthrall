@@ -33,15 +33,19 @@
  */
 #define PLAINTEXT CFSTR("public.utf8-plain-text")
 
+static mach_timebase_info_data_t mach_timebase;
+
 static CGDirectDisplayID display;
 
 static PasteboardRef clipboard;
 
 static struct rectangle screenbounds;
 
-static mach_timebase_info_data_t mach_timebase;
-
 struct xypoint screen_center;
+
+static dirmask_t mouse_edgemask;
+
+static mouse_edge_change_handler_t* mouse_edge_handler;
 
 static uint64_t double_click_threshold_us;
 
@@ -74,7 +78,7 @@ static void clear_gamma_table(struct gamma_table* gt)
 
 static struct gamma_table orig_gamma, alt_gamma;
 
-int platform_init(int* fd)
+int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 {
 	CGError cgerr;
 	OSStatus status;
@@ -144,6 +148,8 @@ int platform_init(int* fd)
 		orig_gamma.numents = numgaments;
 		alt_gamma.numents = numgaments;
 	}
+
+	mouse_edge_handler = edge_handler;
 
 	*fd = -1;
 	return 0;
@@ -295,6 +301,35 @@ void set_mousepos(struct xypoint pt)
 	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
 }
 
+/* FIXME: deduplicating this and x11.c's version would be nice. */
+static dirmask_t get_mouse_edgemask(void)
+{
+	dirmask_t mask = 0;
+	struct xypoint curpos = get_mousepos();
+
+	if (curpos.x == screenbounds.x.min)
+		mask |= LEFTMASK;
+	if (curpos.x == screenbounds.x.max)
+		mask |= RIGHTMASK;
+	if (curpos.y == screenbounds.y.min)
+		mask |= UPMASK;
+	if (curpos.y == screenbounds.y.max)
+		mask |= DOWNMASK;
+
+	return mask;
+}
+
+/* This is also basically identical to x11.c's version */
+static void check_mouse_edge(void)
+{
+	dirmask_t curmask = get_mouse_edgemask();
+
+	if (curmask != mouse_edgemask && mouse_edge_handler)
+		mouse_edge_handler(mouse_edgemask, curmask);
+
+	mouse_edgemask = curmask;
+}
+
 void move_mousepos(int32_t dx, int32_t dy)
 {
 	CGPoint pt = get_mousepos_cgpoint();
@@ -311,6 +346,9 @@ void move_mousepos(int32_t dx, int32_t dy)
 		post_mouseevent(pt, kCGEventOtherMouseDragged, kCGMouseButtonCenter);
 	else
 		set_mousepos_cgpoint(pt);
+
+	if (opmode == REMOTE)
+		check_mouse_edge();
 }
 
 struct click_history {

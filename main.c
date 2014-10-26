@@ -528,7 +528,7 @@ static void run_remote(void)
 		exit(1);
 	}
 
-	if (platform_init(&platform_event_fd) < 0) {
+	if (platform_init(&platform_event_fd, NULL) < 0) {
 		elog("platform_init() failed\n");
 		exit(1);
 	}
@@ -1148,7 +1148,7 @@ int main(int argc, char** argv)
 		run_remote();
 	}
 
-	if (platform_init(&platform_event_fd)) {
+	if (platform_init(&platform_event_fd, NULL)) {
 		elog("platform_init failed\n");
 		exit(1);
 	}

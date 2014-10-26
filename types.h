@@ -62,6 +62,13 @@ typedef enum {
 
 #define for_each_direction(d) for (d = LEFT; d < NUM_DIRECTIONS; d++)
 
+typedef uint32_t dirmask_t;
+
+#define LEFTMASK (1U << LEFT)
+#define RIGHTMASK (1U << RIGHT)
+#define UPMASK (1U << UP)
+#define DOWNMASK (1U << DOWN)
+
 typedef enum {
 	NT_NONE = 0,
 	NT_REMOTE,

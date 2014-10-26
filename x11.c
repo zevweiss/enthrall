@@ -61,6 +61,12 @@ static struct {
 
 struct xypoint screen_center;
 
+/* A bitmask of which edges of the screen the mouse is currently touching */
+static dirmask_t mouse_edgemask;
+
+/* Handler to fire when mouse edge state changes */
+static mouse_edge_change_handler_t* mouse_edge_handler;
+
 struct xhotkey {
 	KeyCode key;
 	unsigned int modmask;
@@ -351,13 +357,67 @@ static void xrr_exit(void)
 	XRRFreeScreenConfigInfo(xrr.config);
 }
 
-int platform_init(int* fd)
+/*
+ * Append to *wlist (an already-xmalloc()ed array of Windows) all children
+ * (recursively) of the given window, updating *nwin to reflect the added
+ * elements.  Returns 0 on success, non-zero on failure.
+ */
+static int append_child_windows(Window parent, Window** wlist, unsigned int* nwin)
 {
-	int i;
+	int status;
+	unsigned int i, num_children;
+	Window root_ret, parent_ret;
+	Window* children;
+
+	if (!XQueryTree(xdisp, parent, &root_ret, &parent_ret,
+	                &children, &num_children)) {
+		xfree(*wlist);
+		*wlist = NULL;
+		*nwin = 0;
+		return -1;
+	}
+
+	assert(root_ret == xrootwin);
+
+	*wlist = xrealloc(*wlist, (*nwin + num_children) * sizeof(**wlist));
+	memcpy(*wlist + *nwin, children, num_children * sizeof(**wlist));
+	*nwin += num_children;
+
+	for (i = 0; i < num_children; i++) {
+		status = append_child_windows(children[i], wlist, nwin);
+		if (status) {
+			XFree(children);
+			return status;
+		}
+	}
+
+	XFree(children);
+
+	return 0;
+}
+
+/*
+ * A non-atomic snapshot of global X window state; could possibly be made
+ * atomic by bracketing it with XGrabServer()/XUngrabServer()...
+ */
+static int get_all_xwindows(Window** wlist, unsigned int* nwin)
+{
+	*nwin = 1;
+	*wlist = xmalloc(*nwin * sizeof(**wlist));
+	(*wlist)[0] = xrootwin;
+
+	return append_child_windows((*wlist)[0], wlist, nwin);
+}
+
+int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
+{
+	unsigned int i;
 	Atom atom;
 	char bitmap[1] = { 0, };
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
+	Window* all_windows;
+	unsigned int num_windows;
 
 	if (opmode == REMOTE && kvmap_get(remote_params, "DISPLAY"))
 		setenv("DISPLAY", kvmap_get(remote_params, "DISPLAY"), 1);
@@ -405,6 +465,20 @@ int platform_init(int* fd)
 	 */
 	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
 	                      | get_mod_mask(XK_Num_Lock));
+
+	mouse_edge_handler = edge_handler;
+
+	if (mouse_edge_handler && opmode == MASTER) {
+		if (get_all_xwindows(&all_windows, &num_windows)) {
+			elog("get_all_xwindows() failed, disabling switch-by-mouse\n");
+			mouse_edge_handler = NULL;
+		} else {
+			for (i = 0; i < num_windows; i++)
+				XSelectInput(xdisp, all_windows[i],
+				             PointerMotionMask|SubstructureNotifyMask);
+			xfree(all_windows);
+		}
+	}
 
 	xrr_init();
 
@@ -462,6 +536,32 @@ struct xypoint get_mousepos(void)
 	return pt;
 }
 
+static dirmask_t edgemask_for_point(struct xypoint pt)
+{
+	dirmask_t mask = 0;
+
+	if (pt.x == 0)
+		mask |= LEFTMASK;
+	if (pt.x == screen_dimensions.x - 1)
+		mask |= RIGHTMASK;
+	if (pt.y == 0)
+		mask |= UPMASK;
+	if (pt.y == screen_dimensions.y - 1)
+		mask |= DOWNMASK;
+
+	return mask;
+}
+
+static void check_mouse_edge(struct xypoint pt)
+{
+	dirmask_t cur_edgemask = edgemask_for_point(pt);
+
+	if (cur_edgemask != mouse_edgemask && mouse_edge_handler)
+		mouse_edge_handler(mouse_edgemask, cur_edgemask);
+
+	mouse_edgemask = cur_edgemask;
+}
+
 void set_mousepos(struct xypoint pt)
 {
 	XWarpPointer(xdisp, None, xrootwin, 0, 0, 0, 0, pt.x, pt.y);
@@ -472,6 +572,8 @@ void move_mousepos(int32_t dx, int32_t dy)
 {
 	XWarpPointer(xdisp, None, None, 0, 0, 0, 0, dx, dy);
 	XFlush(xdisp);
+	if (opmode == REMOTE)
+		check_mouse_edge(get_mousepos());
 }
 
 static const mousebutton_t pi_mousebuttons[] = {
@@ -686,24 +788,45 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	send_keyevent(active_remote, kc, pr);
 }
 
+static void handle_grabbed_mousemov(XMotionEvent* mev)
+{
+	if (mev->x_root == screen_center.x
+	    && mev->y_root == screen_center.y)
+		return;
+
+	send_moverel(active_remote, mev->x_root - last_seen_mousepos.x,
+	             mev->y_root - last_seen_mousepos.y);
+
+	if (abs(mev->x_root - screen_center.x) > 1
+	    || abs(mev->y_root - screen_center.y) > 1) {
+		set_mousepos(screen_center);
+		last_seen_mousepos = screen_center;
+	} else {
+		last_seen_mousepos = (struct xypoint){ .x = mev->x_root, .y = mev->y_root, };
+	}
+}
+
+static void handle_local_mousemove(XMotionEvent* mev)
+{
+	if (mouse_edge_handler)
+		check_mouse_edge((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
+}
+
 static void handle_event(XEvent* ev)
 {
 	switch (ev->type) {
 	case MotionNotify:
-		if (ev->xmotion.x_root == screen_center.x
-		    && ev->xmotion.y_root == screen_center.y)
-			break;
+		if (active_remote)
+			handle_grabbed_mousemov(&ev->xmotion);
+		else
+			handle_local_mousemove(&ev->xmotion);
+		break;
 
-		send_moverel(active_remote, ev->xmotion.x_root - last_seen_mousepos.x,
-		             ev->xmotion.y_root - last_seen_mousepos.y);
-
-		if (abs(ev->xmotion.x_root - screen_center.x) > 1
-		    || abs(ev->xmotion.y_root - screen_center.y) > 1) {
-			set_mousepos(screen_center);
-			last_seen_mousepos = screen_center;
-		} else {
-			last_seen_mousepos = (struct xypoint){ .x = ev->xmotion.x_root,
-			                                       .y = ev->xmotion.y_root, };
+	case CreateNotify:
+		if (opmode == MASTER && mouse_edge_handler) {
+			XSelectInput(xdisp, ev->xcreatewindow.window,
+			             PointerMotionMask|SubstructureNotifyMask);
+			XFlush(xdisp);
 		}
 		break;
 
@@ -742,6 +865,13 @@ static void handle_event(XEvent* ev)
 
 	case SelectionNotify:
 		elog("unexpected SelectionNotify event\n");
+		break;
+
+	case MapNotify:
+	case UnmapNotify:
+	case DestroyNotify:
+	case ConfigureNotify:
+		/* ignore */
 		break;
 
 	default:
