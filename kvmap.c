@@ -27,6 +27,15 @@ struct kvmap* new_kvmap(void)
 
 void destroy_kvmap(struct kvmap* kvm)
 {
+	struct kvent* e;
+
+	while (kvm->head) {
+		e = kvm->head;
+		kvm->head = e->next;
+		xfree(e->key);
+		xfree(e->value);
+		xfree(e);
+	}
 	xfree(kvm);
 }
 

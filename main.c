@@ -332,15 +332,18 @@ static struct remote* find_remote(const char* name)
 
 static void resolve_noderef(struct noderef* n)
 {
+	char* name;
 	struct remote* rmt;
 	if (n->type == NT_REMOTE_TMPNAME) {
-		rmt = find_remote(n->name);
+		name = n->name;
+		rmt = find_remote(name);
 		if (!rmt) {
 			elog("No such remote: '%s'\n", n->name);
 			exit(1);
 		}
 		n->type = NT_REMOTE;
 		n->node = rmt;
+		xfree(name);
 	}
 }
 
@@ -647,6 +650,57 @@ static int switch_to_neighbor(direction_t dir, keycode_t* modkeys, int from_hotk
 	return switch_to_node(n, modkeys, from_hotkey);
 }
 
+static void clear_ssh_config(struct ssh_config* c)
+{
+	xfree(c->remoteshell);
+	xfree(c->bindaddr);
+	xfree(c->identityfile);
+	xfree(c->username);
+	xfree(c->remotecmd);
+	memset(c, 0, sizeof(*c));
+}
+
+static void free_remote(struct remote* rmt)
+{
+	if (rmt->alias != rmt->hostname)
+		xfree(rmt->alias);
+	xfree(rmt->hostname);
+	destroy_kvmap(rmt->params);
+	clear_ssh_config(&rmt->sshcfg);
+	xfree(rmt);
+}
+
+static void shutdown_master(void)
+{
+	struct remote* rmt;
+	struct scheduled_call* sc;
+	struct hotkey* hk;
+
+	while (config->remotes) {
+		rmt = config->remotes;
+		config->remotes = rmt->next;
+		disconnect_remote(rmt);
+		free_remote(rmt);
+	}
+
+	while (scheduled_calls) {
+		sc = scheduled_calls;
+		scheduled_calls = sc->next;
+		xfree(sc);
+	}
+
+	while (config->hotkeys) {
+		hk = config->hotkeys;
+		config->hotkeys = hk->next;
+		xfree(hk->key_string);
+		xfree(hk);
+	}
+
+	clear_ssh_config(&config->ssh_defaults);
+
+	platform_exit();
+}
+
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
 	struct remote* rmt;
@@ -674,9 +728,8 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_QUIT:
-		for_each_remote (rmt)
-			disconnect_remote(rmt);
-		platform_exit();
+		xfree(modkeys);
+		shutdown_master();
 		exit(0);
 
 	default:

@@ -344,6 +344,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg)
 
 	cfg_lex_destroy();
 
+	xfree(pstate.nextrmt->params);
 	xfree(pstate.nextrmt);
 
 	return status;

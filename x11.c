@@ -506,12 +506,22 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 
 void platform_exit(void)
 {
+	struct xhotkey* hk;
+
 	xrr_exit();
 	XFreeCursor(xdisp, xcursor_blank);
 	XFreePixmap(xdisp, cursor_pixmap);
 	XDestroyWindow(xdisp, xwin);
 	XCloseDisplay(xdisp);
 	x11_keycodes_exit();
+
+	while (xhotkeys) {
+		hk = xhotkeys;
+		xhotkeys = hk->next;
+		xfree(hk);
+	}
+
+	xfree(clipboard_text);
 }
 
 #if defined(CLOCK_MONOTONIC_RAW)
