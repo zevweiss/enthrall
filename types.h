@@ -4,10 +4,6 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#include "msgchan.h"
-#include "proto.h"
-#include "kvmap.h"
-
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
 struct xypoint {
 	int32_t x;
@@ -94,6 +90,10 @@ struct ssh_config {
 	char* username;
 	char* remotecmd;
 };
+
+#include "msgchan.h"
+#include "proto.h"
+#include "kvmap.h"
 
 struct remote {
 	char* alias;

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "types.h"
+
 #define PROT_VERSION 0
 
 enum {
@@ -18,6 +20,7 @@ enum {
 	MT_SETCLIPBOARD,
 	MT_LOGMSG,
 	MT_SETBRIGHTNESS,
+	MT_EDGEMASKCHANGE,
 };
 
 typedef uint32_t msgtype_t;
@@ -63,6 +66,11 @@ struct setbrightness_msg {
 	float brightness;
 };
 
+struct edgemaskchange_msg {
+	dirmask_t old;
+	dirmask_t new;
+};
+
 /*
  * How many bytes we will always unconditionally read at the start of a
  * message (the initial fixed-size part).
@@ -91,6 +99,7 @@ struct message {
 		struct setclipboard_msg setclipboard;
 		struct logmsg_msg logmsg;
 		struct setbrightness_msg setbrightness;
+		struct edgemaskchange_msg edgemaskchange;
 	};
 
 	/* Extra data accompanying message (e.g. clipboard contents) */

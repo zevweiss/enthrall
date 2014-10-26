@@ -64,6 +64,7 @@ static const size_t payload_sizes[] = {
 	[MT_SETCLIPBOARD] = 0,
 	[MT_LOGMSG] = 0,
 	[MT_SETBRIGHTNESS] = sizeof(uint32_t),
+	[MT_EDGEMASKCHANGE] = 2 * sizeof(uint32_t),
 };
 
 static void flatten_setup(const struct message* msg, void* buf)
@@ -170,6 +171,20 @@ static void unflatten_setbrightness(const void* buf, struct message* msg)
 	msg->setbrightness.brightness = fixed_to_float(ntohl(u32b[0]));
 }
 
+static void flatten_edgemaskchange(const struct message* msg, void* buf)
+{
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(msg->edgemaskchange.old);
+	u32b[1] = htonl(msg->edgemaskchange.new);
+}
+
+static void unflatten_edgemaskchange(const void* buf, struct message* msg)
+{
+	const uint32_t* u32b = buf;
+	msg->edgemaskchange.old = ntohl(u32b[0]);
+	msg->edgemaskchange.new = ntohl(u32b[1]);
+}
+
 static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_SETUP] = flatten_setup,
 	[MT_READY] = flatten_ready,
@@ -181,6 +196,7 @@ static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_SETCLIPBOARD] = flatten_setclipboard,
 	[MT_LOGMSG] = flatten_logmsg,
 	[MT_SETBRIGHTNESS] = flatten_setbrightness,
+	[MT_EDGEMASKCHANGE] = flatten_edgemaskchange,
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
@@ -194,6 +210,7 @@ static void (*const unflatteners[])(const void*, struct message*) = {
 	[MT_SETCLIPBOARD] = unflatten_setclipboard,
 	[MT_LOGMSG] = unflatten_logmsg,
 	[MT_SETBRIGHTNESS] = unflatten_setbrightness,
+	[MT_EDGEMASKCHANGE] = unflatten_edgemaskchange,
 };
 
 static void flatten_message(const struct message* msg, void* buf)
