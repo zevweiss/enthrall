@@ -328,30 +328,33 @@ void set_mousepos_screenrel(float xpos, float ypos)
 }
 
 /* FIXME: deduplicating this and x11.c's version would be nice. */
-static dirmask_t get_mouse_edgemask(void)
+static dirmask_t get_mouse_edgemask(struct xypoint pt)
 {
 	dirmask_t mask = 0;
-	struct xypoint curpos = get_mousepos();
 
-	if (curpos.x == screenbounds.x.min)
+	if (pt.x == screenbounds.x.min)
 		mask |= LEFTMASK;
-	if (curpos.x == screenbounds.x.max)
+	if (pt.x == screenbounds.x.max)
 		mask |= RIGHTMASK;
-	if (curpos.y == screenbounds.y.min)
+	if (pt.y == screenbounds.y.min)
 		mask |= UPMASK;
-	if (curpos.y == screenbounds.y.max)
+	if (pt.y == screenbounds.y.max)
 		mask |= DOWNMASK;
 
 	return mask;
 }
 
 /* This is also basically identical to x11.c's version */
-static void check_mouse_edge(void)
+static void check_mouse_edge(struct xypoint pt)
 {
-	dirmask_t curmask = get_mouse_edgemask();
+	float xpos, ypos;
+	dirmask_t curmask = get_mouse_edgemask(pt);
 
-	if (curmask != mouse_edgemask && mouse_edge_handler)
-		mouse_edge_handler(mouse_edgemask, curmask);
+	if (curmask != mouse_edgemask && mouse_edge_handler) {
+		xpos = (float)pt.x / (float)screenbounds.x.max;
+		ypos = (float)pt.y / (float)screenbounds.y.max;
+		mouse_edge_handler(mouse_edgemask, curmask, xpos, ypos);
+	}
 
 	mouse_edgemask = curmask;
 }
@@ -374,7 +377,7 @@ void move_mousepos(int32_t dx, int32_t dy)
 		set_mousepos_cgpoint(pt);
 
 	if (opmode == REMOTE && !any_mouse_buttons_held())
-		check_mouse_edge();
+		check_mouse_edge(get_mousepos());
 }
 
 struct click_history {

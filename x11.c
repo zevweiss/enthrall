@@ -571,10 +571,14 @@ static dirmask_t edgemask_for_point(struct xypoint pt)
 
 static void check_mouse_edge(struct xypoint pt)
 {
+	float xpos, ypos;
 	dirmask_t cur_edgemask = edgemask_for_point(pt);
 
-	if (cur_edgemask != mouse_edgemask && mouse_edge_handler)
-		mouse_edge_handler(mouse_edgemask, cur_edgemask);
+	if (cur_edgemask != mouse_edgemask && mouse_edge_handler) {
+		xpos = (float)pt.x / (float)screen_dimensions.x;
+		ypos = (float)pt.y / (float)screen_dimensions.y;
+		mouse_edge_handler(mouse_edgemask, cur_edgemask, xpos, ypos);
+	}
 
 	mouse_edgemask = cur_edgemask;
 }

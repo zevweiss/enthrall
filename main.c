@@ -494,7 +494,7 @@ static void handle_remote_fds(void)
 	}
 }
 
-static void send_edgemask_change_cb(dirmask_t old, dirmask_t new)
+static void send_edgemask_change_cb(dirmask_t old, dirmask_t new, float xpos, float ypos)
 {
 	struct message* msg = new_message(MT_EDGEMASKCHANGE);
 
@@ -979,7 +979,7 @@ static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char*
 	}
 }
 
-static void trigger_edgeevent_cb(uint32_t old, uint32_t new)
+static void trigger_edgeevent_cb(uint32_t old, uint32_t new, float xpos, float ypos)
 {
 	check_edgeevents(config->master.edgehist, "master", old, new);
 }

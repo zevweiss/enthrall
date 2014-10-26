@@ -48,7 +48,8 @@ void process_events(void);
 extern struct xypoint screen_center;
 
 typedef void (mouse_edge_change_handler_t)(dirmask_t old_edgemask,
-                                           dirmask_t new_edgemask);
+                                           dirmask_t new_edgemask,
+                                           float xpos, float ypos);
 
 int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler);
 void platform_exit(void);
