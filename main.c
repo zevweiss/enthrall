@@ -441,6 +441,11 @@ static void handle_remote_message(const struct message* msg)
 		set_display_brightness(msg->setbrightness.brightness);
 		break;
 
+	case MT_SETMOUSEPOSSCREENREL:
+		set_mousepos_screenrel(msg->setmouseposscreenrel.xpos,
+		                       msg->setmouseposscreenrel.ypos);
+		break;
+
 	default:
 		elog("unhandled message type: %u\n", msg->type);
 		exit(1);
@@ -931,7 +936,55 @@ static uint64_t get_edgehist_entry(const struct edge_state* es, int rel_idx)
 	return es->event_times[idx];
 }
 
-static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeevent_t evtype)
+/*
+ * Send the screen-relative reposition to make switch-by-mouse look more
+ * "natural" -- so the mouse pointer slides semi-continuously from one node's
+ * screen to a corresponding position on the next's, rather than jumping to
+ * wherever it last was on the destination node.
+ */
+static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
+{
+	float x, y;
+	struct message* msg;
+
+	switch (dir) {
+	case LEFT:
+		x = 1.0;
+		y = src_y;
+		break;
+
+	case RIGHT:
+		x = 0.0;
+		y = src_y;
+		break;
+
+	case UP:
+		x = src_x;
+		y = 1.0;
+		break;
+
+	case DOWN:
+		x = src_x;
+		y = 0.0;
+		break;
+
+	default:
+		elog("bad direction %d in edgeswitch_reposition()\n", dir);
+		return;
+	}
+
+	if (active_remote) {
+		msg = new_message(MT_SETMOUSEPOSSCREENREL);
+		msg->setmouseposscreenrel.xpos = x;
+		msg->setmouseposscreenrel.ypos = y;
+		enqueue_message(active_remote, msg);
+	} else {
+		set_mousepos_screenrel(x, y);
+	}
+}
+
+static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeevent_t evtype,
+                             float src_xpos, float src_ypos)
 {
 	int status, start_idx;
 	keycode_t* modkeys;
@@ -957,6 +1010,7 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 		if (duration < config->mouseswitch.window) {
 			modkeys = get_current_modifiers();
 			switch_to_neighbor(dir, modkeys);
+			edgeswitch_reposition(dir, src_xpos, src_ypos);
 			xfree(modkeys);
 		}
 	}
@@ -965,7 +1019,7 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 }
 
 static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char* srcname,
-                             uint32_t old, uint32_t new)
+                             uint32_t old, uint32_t new, float xpos, float ypos)
 {
 	direction_t dir;
 	dirmask_t dirmask;
@@ -975,7 +1029,7 @@ static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char*
 		dirmask = 1U << dir;
 		if ((old & dirmask) != (new & dirmask)) {
 			edgeevtype = (new & dirmask) ? EE_ARRIVE : EE_DEPART;
-			if (trigger_edgeevent(&hist[dir], dir, edgeevtype))
+			if (trigger_edgeevent(&hist[dir], dir, edgeevtype, xpos, ypos))
 				elog("out-of-sync edge event on %s ignored\n", srcname);
 		}
 	}
@@ -983,7 +1037,7 @@ static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char*
 
 static void trigger_edgeevent_cb(uint32_t old, uint32_t new, float xpos, float ypos)
 {
-	check_edgeevents(config->master.edgehist, "master", old, new);
+	check_edgeevents(config->master.edgehist, "master", old, new, xpos, ypos);
 }
 
 static void handle_master_message(struct remote* rmt, const struct message* msg)
@@ -1033,7 +1087,8 @@ static void handle_master_message(struct remote* rmt, const struct message* msg)
 			fail_remote(rmt, "invalid edge mask");
 		else
 			check_edgeevents(rmt->edgehist, rmt->alias,
-			                 msg->edgemaskchange.old, msg->edgemaskchange.new);
+			                 msg->edgemaskchange.old, msg->edgemaskchange.new,
+			                 msg->edgemaskchange.xpos, msg->edgemaskchange.ypos);
 		break;
 
 	default:
