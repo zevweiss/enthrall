@@ -812,7 +812,11 @@ static void indicate_switch(struct remote* from, struct remote* to)
 
 static struct xypoint saved_master_mousepos;
 
-static void switch_to_node(struct noderef* n, keycode_t* modkeys)
+/*
+ * Returns non-zero on a successful "real" switch, or zero if no actual switch
+ * was performed (i.e. the switched-to node is the same as the current node).
+ */
+static int switch_to_node(struct noderef* n, keycode_t* modkeys)
 {
 	struct remote* switch_to;
 
@@ -830,20 +834,20 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 		if (switch_to->state != CS_CONNECTED) {
 			elog("remote '%s' not connected, can't switch to\n",
 			     switch_to->alias);
-			return;
+			return 0;
 		}
 		break;
 
 	default:
 		elog("unexpected neighbor type %d\n", n->type);
-		return;
+		return 0;
 	}
 
 	/* Give visual indication even if no actual switch is performed */
 	indicate_switch(active_remote, switch_to);
 
 	if (switch_to == active_remote)
-		return;
+		return 0;
 
 	if (active_remote && !switch_to) {
 		ungrab_inputs();
@@ -860,13 +864,15 @@ static void switch_to_node(struct noderef* n, keycode_t* modkeys)
 	transfer_modifiers(active_remote, switch_to, modkeys);
 
 	active_remote = switch_to;
+
+	return 1;
 }
 
-static void switch_to_neighbor(direction_t dir, keycode_t* modkeys)
+static int switch_to_neighbor(direction_t dir, keycode_t* modkeys)
 {
 	struct noderef* n = &(active_remote ? active_remote->neighbors
 	                      : config->master.neighbors)[dir];
-	switch_to_node(n, modkeys);
+	return switch_to_node(n, modkeys);
 }
 
 static void action_cb(hotkey_context_t ctx, void* arg)
@@ -1009,8 +1015,8 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 		duration = now_us - get_edgehist_entry(ehist, start_idx);
 		if (duration < config->mouseswitch.window) {
 			modkeys = get_current_modifiers();
-			switch_to_neighbor(dir, modkeys);
-			edgeswitch_reposition(dir, src_xpos, src_ypos);
+			if (switch_to_neighbor(dir, modkeys))
+				edgeswitch_reposition(dir, src_xpos, src_ypos);
 			xfree(modkeys);
 		}
 	}
