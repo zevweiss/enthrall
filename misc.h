@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <sys/select.h>
 
 #include "types.h"
 
@@ -85,6 +86,13 @@ static inline void xfree(void* p)
 	free(p);
 }
 
+static inline void fdset_add(int fd, fd_set* set, int* nfds)
+{
+	FD_SET(fd, set);
+	if (fd >= *nfds)
+		*nfds = fd + 1;
+}
+
 void elog(const char* fmt, ...);
 
 typedef enum {
@@ -94,9 +102,11 @@ typedef enum {
 
 extern opmode_t opmode;
 
-extern struct kvmap* remote_params;
-
 extern struct remote* active_remote;
+
+void run_remote(void);
+extern struct kvmap* remote_params;
+extern struct msgchan stdio_msgchan;
 
 void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr);
 void send_moverel(struct remote* rmt, int32_t dx, int32_t dy);
@@ -111,5 +121,10 @@ void set_fd_nonblock(int fd, int nb);
 void set_fd_cloexec(int fd, int ce);
 
 char* expand_word(const char* wd);
+
+void* flatten_kvmap(const struct kvmap* kvm, size_t* len);
+struct kvmap* unflatten_kvmap(const void* buf, size_t len);
+
+void set_clipboard_from_buf(const void* buf, size_t len);
 
 #endif /* MISC_H */

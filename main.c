@@ -27,8 +27,6 @@ struct remote* active_remote = NULL;
 
 char* progname;
 
-static int platform_event_fd;
-
 opmode_t opmode;
 
 struct scheduled_call {
@@ -39,9 +37,6 @@ struct scheduled_call {
 };
 
 static struct scheduled_call* scheduled_calls;
-
-/* msgchan attached to stdin & stdout for use in remote mode */
-struct msgchan stdio_msgchan;
 
 void elog(const char* fmt, ...)
 {
@@ -68,13 +63,6 @@ void elog(const char* fmt, ...)
 		}
 	}
 	va_end(va);
-}
-
-static inline void fdset_add(int fd, fd_set* set, int* nfds)
-{
-	FD_SET(fd, set);
-	if (fd >= *nfds)
-		*nfds = fd + 1;
 }
 
 static void schedule_call(void (*fn)(void* arg), void* arg, uint64_t when)
@@ -107,21 +95,6 @@ static void run_scheduled_calls(uint64_t when)
 		call->fn(call->arg);
 		xfree(call);
 	}
-}
-
-static void set_clipboard_from_buf(const void* buf, size_t len)
-{
-	char* tmp;
-
-	/*
-	 * extra intermediate malloc()ed area just to tack on the NUL
-	 * terminator here is a bit inefficient...
-	 */
-	tmp = xmalloc(len + 1);
-	memcpy(tmp, buf, len);
-	tmp[len] = '\0';
-	set_clipboard_text(tmp);
-	xfree(tmp);
 }
 
 static void disconnect_remote(struct remote* rmt)
@@ -288,74 +261,6 @@ static void exec_remote_shell(const struct remote* rmt)
 	exit(1);
 }
 
-struct kvmflatten_ctx {
-	char* buf;
-	size_t len;
-};
-
-static void flattencb(const char* key, const char* value, void* arg)
-{
-	struct kvmflatten_ctx* ctx = arg;
-	size_t klen = strlen(key), vlen = strlen(value);
-	size_t newlen = ctx->len + klen + 1 + vlen + 1;
-
-	ctx->buf = xrealloc(ctx->buf, newlen);
-	strcpy(ctx->buf + ctx->len, key);
-	ctx->len += klen + 1;
-	strcpy(ctx->buf + ctx->len, value);
-	ctx->len += vlen + 1;
-}
-
-/*
- * Turn a kvmap into a flat buffer of concatenated NUL-terminated strings
- * (e.g. "key1\0value1\0key2\0value2\0"), returning the total combined length
- * of the buffer in *len.
- */
-static void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
-{
-	struct kvmflatten_ctx ctx = { .buf = NULL, .len = 0, };
-
-	kvmap_foreach(kvm, flattencb, &ctx);
-
-	*len = ctx.len;
-
-	return ctx.buf;
-}
-
-/* Inverse of flatten_kvmap(). */
-static struct kvmap* unflatten_kvmap(const void* buf, size_t len)
-{
-	const char* k;
-	const char* v;
-	const char* p = buf;
-	size_t klen, vlen, remaining = len;
-	struct kvmap* kvm = new_kvmap();
-
-	while (remaining > 0) {
-		k = p;
-		klen = strnlen(p, remaining);
-		if (klen == remaining)
-			goto err;
-		p += klen + 1;
-		remaining -= klen + 1;
-
-		v = p;
-		vlen = strnlen(p, remaining);
-		if (vlen == remaining)
-			goto err;
-		p += vlen + 1;
-		remaining -= vlen + 1;
-
-		kvmap_put(kvm, k, v);
-	}
-
-	return kvm;
-
-err:
-	destroy_kvmap(kvm);
-	return NULL;
-}
-
 static void setup_remote(struct remote* rmt)
 {
 	int sockfds[2];
@@ -402,164 +307,6 @@ static void setup_remote(struct remote* rmt)
 	setupmsg->extra.buf = flatten_kvmap(rmt->params, &setupmsg->extra.len);
 
 	enqueue_message(rmt, setupmsg);
-}
-
-static void handle_remote_message(const struct message* msg)
-{
-	struct message* resp;
-
-	switch (msg->type) {
-	case MT_SHUTDOWN:
-		mc_close(&stdio_msgchan);
-		destroy_kvmap(remote_params);
-		exit(0);
-
-	case MT_MOVEREL:
-		move_mousepos(msg->moverel.dx, msg->moverel.dy);
-		break;
-
-	case MT_CLICKEVENT:
-		do_clickevent(msg->clickevent.button, msg->clickevent.pressrel);
-		break;
-
-	case MT_KEYEVENT:
-		do_keyevent(msg->keyevent.keycode, msg->keyevent.pressrel);
-		break;
-
-	case MT_GETCLIPBOARD:
-		resp = new_message(MT_SETCLIPBOARD);
-		resp->extra.buf = get_clipboard_text();
-		resp->extra.len = strlen(resp->extra.buf);
-		mc_enqueue_message(&stdio_msgchan, resp);
-		break;
-
-	case MT_SETCLIPBOARD:
-		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
-		break;
-
-	case MT_SETBRIGHTNESS:
-		set_display_brightness(msg->setbrightness.brightness);
-		break;
-
-	case MT_SETMOUSEPOSSCREENREL:
-		set_mousepos_screenrel(msg->setmouseposscreenrel.xpos,
-		                       msg->setmouseposscreenrel.ypos);
-		break;
-
-	default:
-		elog("unhandled message type: %u\n", msg->type);
-		exit(1);
-	}
-}
-
-static void handle_remote_fds(void)
-{
-	int status, nfds = 0;
-	fd_set rfds, wfds;
-	struct message msg;
-
-	FD_ZERO(&rfds);
-	FD_ZERO(&wfds);
-
-	fdset_add(stdio_msgchan.recv_fd, &rfds, &nfds);
-
-	if (mc_have_outbound_data(&stdio_msgchan))
-		fdset_add(stdio_msgchan.send_fd, &wfds, &nfds);
-
-	if (platform_event_fd >= 0)
-		fdset_add(platform_event_fd, &rfds, &nfds);
-
-	status = select(nfds, &rfds, &wfds, NULL, NULL);
-	if (status < 0) {
-		elog("select() failed: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	if (FD_ISSET(stdio_msgchan.send_fd, &wfds)) {
-		status = send_message(&stdio_msgchan);
-		if (status < 0)
-			exit(1);
-		else
-			assert(status > 0);
-	}
-
-	if (platform_event_fd >= 0 && FD_ISSET(platform_event_fd, &rfds))
-		process_events();
-
-	if (FD_ISSET(stdio_msgchan.recv_fd, &rfds)) {
-		status = recv_message(&stdio_msgchan, &msg);
-		if (status < 0) {
-			elog("failed to receive valid message\n");
-			exit(1);
-		} else if (status > 0) {
-			handle_remote_message(&msg);
-			if (msg.extra.len)
-				xfree(msg.extra.buf);
-		}
-	}
-}
-
-static void send_edgemask_change_cb(dirmask_t old, dirmask_t new, float xpos, float ypos)
-{
-	struct message* msg = new_message(MT_EDGEMASKCHANGE);
-
-	msg->edgemaskchange.old = old;
-	msg->edgemaskchange.new = new;
-	msg->edgemaskchange.xpos = xpos;
-	msg->edgemaskchange.ypos = ypos;
-
-	mc_enqueue_message(&stdio_msgchan, msg);
-}
-
-struct kvmap* remote_params;
-
-static void run_remote(void)
-{
-	struct message setupmsg;
-	struct message* readymsg;
-
-	/*
-	 * Seems unlikely that sending log messages is going to work if some
-	 * of these early setup steps failed, but I guess we might as well
-	 * try...
-	 */
-
-	if (read_message(STDIN_FILENO, &setupmsg)) {
-		elog("failed to receive setup message\n");
-		exit(1);
-	}
-
-	if (setupmsg.type != MT_SETUP) {
-		elog("unexpected message type %u instead of SETUP\n", setupmsg.type);
-		exit(1);
-	}
-
-	if (setupmsg.setup.prot_vers != PROT_VERSION) {
-		elog("unsupported protocol version %d\n", setupmsg.setup.prot_vers);
-		exit(1);
-	}
-
-	remote_params = unflatten_kvmap(setupmsg.extra.buf, setupmsg.extra.len);
-	if (!remote_params) {
-		elog("failed to unflatted remote-params kvmap\n");
-		exit(1);
-	}
-
-	if (platform_init(&platform_event_fd, send_edgemask_change_cb) < 0) {
-		elog("platform_init() failed\n");
-		exit(1);
-	}
-
-	set_fd_nonblock(STDIN_FILENO, 1);
-	set_fd_nonblock(STDOUT_FILENO, 1);
-
-	mc_init(&stdio_msgchan, STDOUT_FILENO, STDIN_FILENO);
-
-	readymsg = new_message(MT_READY);
-	mc_enqueue_message(&stdio_msgchan, readymsg);
-
-	for (;;)
-		handle_remote_fds();
 }
 
 static struct remote* find_remote(const char* name)
@@ -647,7 +394,7 @@ static void check_remotes(void)
 }
 
 
-void transfer_clipboard(struct remote* from, struct remote* to)
+static void transfer_clipboard(struct remote* from, struct remote* to)
 {
 	struct message* msg;
 
@@ -668,7 +415,7 @@ void transfer_clipboard(struct remote* from, struct remote* to)
 	}
 }
 
-void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
+static void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
 {
 	int i;
 	struct message* msg;
@@ -1046,7 +793,7 @@ static void trigger_edgeevent_cb(uint32_t old, uint32_t new, float xpos, float y
 	check_edgeevents(config->master.edgehist, "master", old, new, xpos, ypos);
 }
 
-static void handle_master_message(struct remote* rmt, const struct message* msg)
+static void handle_message(struct remote* rmt, const struct message* msg)
 {
 	int loglen;
 	char* logmsg;
@@ -1117,7 +864,7 @@ static void read_rmtdata(struct remote* rmt)
 		return;
 	}
 
-	handle_master_message(rmt, &msg);
+	handle_message(rmt, &msg);
 
 	if (msg.extra.len)
 		xfree(msg.extra.buf);
@@ -1160,7 +907,7 @@ static void enqueue_scheduled_messages(struct remote* rmt, uint64_t when)
 	}
 }
 
-static void handle_fds(void)
+static void handle_fds(int platform_event_fd)
 {
 	int status, nfds = 0;
 	fd_set rfds, wfds;
@@ -1264,6 +1011,7 @@ int main(int argc, char** argv)
 	struct remote* rmt;
 	FILE* cfgfile;
 	struct stat st;
+	int platform_event_fd;
 
 	static const struct option options[] = {
 		{ "help", no_argument, NULL, 'h', },
@@ -1303,15 +1051,12 @@ int main(int argc, char** argv)
 		}
 
 		opmode = REMOTE;
+		run_remote();
 	} else if (argc == 1) {
 		opmode = MASTER;
 	} else {
 		elog("excess arguments\n");
 		exit(1);
-	}
-
-	if (opmode == REMOTE) {
-		run_remote();
 	}
 
 	if (platform_init(&platform_event_fd, trigger_edgeevent_cb)) {
@@ -1353,7 +1098,7 @@ int main(int argc, char** argv)
 		setup_remote(rmt);
 
 	for (;;)
-		handle_fds();
+		handle_fds(platform_event_fd);
 
 	for (rmt = config->remotes; rmt; rmt = rmt->next)
 		pid = wait(&status);

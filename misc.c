@@ -4,6 +4,8 @@
 #include <wordexp.h>
 
 #include "misc.h"
+#include "kvmap.h"
+#include "platform.h"
 
 int write_all(int fd, const void* buf, size_t len)
 {
@@ -112,4 +114,87 @@ char* expand_word(const char* wd)
 	wordfree(&exp);
 
 	return ret;
+}
+
+struct kvmflatten_ctx {
+	char* buf;
+	size_t len;
+};
+
+static void flattencb(const char* key, const char* value, void* arg)
+{
+	struct kvmflatten_ctx* ctx = arg;
+	size_t klen = strlen(key), vlen = strlen(value);
+	size_t newlen = ctx->len + klen + 1 + vlen + 1;
+
+	ctx->buf = xrealloc(ctx->buf, newlen);
+	strcpy(ctx->buf + ctx->len, key);
+	ctx->len += klen + 1;
+	strcpy(ctx->buf + ctx->len, value);
+	ctx->len += vlen + 1;
+}
+
+/*
+ * Turn a kvmap into a flat buffer of concatenated NUL-terminated strings
+ * (e.g. "key1\0value1\0key2\0value2\0"), returning the total combined length
+ * of the buffer in *len.
+ */
+void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
+{
+	struct kvmflatten_ctx ctx = { .buf = NULL, .len = 0, };
+
+	kvmap_foreach(kvm, flattencb, &ctx);
+
+	*len = ctx.len;
+
+	return ctx.buf;
+}
+
+/* Inverse of flatten_kvmap(). */
+struct kvmap* unflatten_kvmap(const void* buf, size_t len)
+{
+	const char* k;
+	const char* v;
+	const char* p = buf;
+	size_t klen, vlen, remaining = len;
+	struct kvmap* kvm = new_kvmap();
+
+	while (remaining > 0) {
+		k = p;
+		klen = strnlen(p, remaining);
+		if (klen == remaining)
+			goto err;
+		p += klen + 1;
+		remaining -= klen + 1;
+
+		v = p;
+		vlen = strnlen(p, remaining);
+		if (vlen == remaining)
+			goto err;
+		p += vlen + 1;
+		remaining -= vlen + 1;
+
+		kvmap_put(kvm, k, v);
+	}
+
+	return kvm;
+
+err:
+	destroy_kvmap(kvm);
+	return NULL;
+}
+
+void set_clipboard_from_buf(const void* buf, size_t len)
+{
+	char* tmp;
+
+	/*
+	 * extra intermediate malloc()ed area just to tack on the NUL
+	 * terminator here is a bit inefficient...
+	 */
+	tmp = xmalloc(len + 1);
+	memcpy(tmp, buf, len);
+	tmp[len] = '\0';
+	set_clipboard_text(tmp);
+	xfree(tmp);
 }
