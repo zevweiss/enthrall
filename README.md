@@ -75,8 +75,6 @@ other user.
 
  - Support for OSX as a master.
 
- - Switch-by-mouse (e.g. double-tap a screen edge)
-
  - Configurable key-remapping
 
  - Daemonization

@@ -28,6 +28,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	struct noderef noderef;
 	struct action action;
 	struct switch_indication switchind;
+	struct mouse_switch mouseswitch;
 };
 
 %code {
@@ -76,7 +77,7 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
 %token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE KW_FLASHACTIVE
-%token KW_NONE
+%token KW_NONE KW_MOUSESWITCH KW_MULTITAP
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -86,6 +87,7 @@ static struct remote* new_uninit_remote(void)
 %type <noderef> node
 %type <action> action
 %type <switchind> switchind
+%type <mouseswitch> mouseswitch
 
 %type <i> port_setting
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -169,6 +171,21 @@ switchind: KW_DIMINACTIVE realnum {
 	$$.type = SI_NONE;
 };
 
+mouseswitch: KW_MULTITAP INTEGER realnum {
+	$$.type = MS_MULTITAP;
+	$$.num = $2;
+	$$.window = (uint64_t)($3 * 1000000);
+
+	if ($$.num <= 0 || $$.num > ((EDGESTATE_HISTLEN+1) / 2))
+		fail_parse(st, "invalid multi-tap count");
+
+	if ($3 < 0.0)
+		fail_parse(st, "multi-tap time window must be >= 0");
+}
+| KW_NONE {
+	$$.type = MS_NONE;
+};
+
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
 }
@@ -189,6 +206,9 @@ master_opt: remoteshell_setting {
 }
 | KW_SWITCHINDICATOR EQ switchind {
 	st->cfg->switch_indication = $3;
+}
+| KW_MOUSESWITCH EQ mouseswitch {
+	st->cfg->mouseswitch = $3;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));

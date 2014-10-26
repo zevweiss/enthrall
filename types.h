@@ -65,6 +65,8 @@ typedef uint32_t dirmask_t;
 #define UPMASK (1U << UP)
 #define DOWNMASK (1U << DOWN)
 
+#define ALLDIRS_MASK (LEFTMASK|RIGHTMASK|UPMASK|DOWNMASK)
+
 typedef enum {
 	NT_NONE = 0,
 	NT_REMOTE,
@@ -91,6 +93,25 @@ struct ssh_config {
 	char* remotecmd;
 };
 
+typedef enum {
+	EE_DEPART,
+	EE_ARRIVE,
+} edgeevent_t;
+
+/* How long a history of edge events we track */
+#define EDGESTATE_HISTLEN 8
+
+/*
+ * Circular buffer containing recent history of mouse-pointer
+ * arrival/departure events at a given screen edge, in strict alternation
+ */
+struct edge_state {
+	uint64_t event_times[EDGESTATE_HISTLEN];
+	edgeevent_t last_evtype;
+	/* Where in the circular buffer the last event is */
+	unsigned int evidx;
+};
+
 #include "msgchan.h"
 #include "proto.h"
 #include "kvmap.h"
@@ -109,6 +130,9 @@ struct remote {
 
 	/* neighbors */
 	struct noderef neighbors[NUM_DIRECTIONS];
+
+	/* History of mouse arrivals/departures at each screen edge */
+	struct edge_state edgehist[NUM_DIRECTIONS];
 
 	/* connection state */
 	connstate_t state;
@@ -166,8 +190,18 @@ struct switch_indication {
 	uint64_t duration;
 };
 
+struct mouse_switch {
+	enum {
+		MS_NONE = 0,
+		MS_MULTITAP,
+	} type;
+	int num;
+	uint64_t window;
+};
+
 struct master {
 	struct noderef neighbors[NUM_DIRECTIONS];
+	struct edge_state edgehist[NUM_DIRECTIONS];
 };
 
 struct config {
@@ -177,6 +211,7 @@ struct config {
 	struct hotkey* hotkeys;
 
 	struct switch_indication switch_indication;
+	struct mouse_switch mouseswitch;
 
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;

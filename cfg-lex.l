@@ -46,6 +46,9 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "flash-active"		return KW_FLASHACTIVE;
 "none"			return KW_NONE;
 
+"mouse-switch"	return KW_MOUSESWITCH;
+"multi-tap"	return KW_MULTITAP;
+
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;
 

@@ -494,6 +494,16 @@ static void handle_remote_fds(void)
 	}
 }
 
+static void send_edgemask_change_cb(dirmask_t old, dirmask_t new)
+{
+	struct message* msg = new_message(MT_EDGEMASKCHANGE);
+
+	msg->edgemaskchange.old = old;
+	msg->edgemaskchange.new = new;
+
+	mc_enqueue_message(&stdio_msgchan, msg);
+}
+
 struct kvmap* remote_params;
 
 static void run_remote(void)
@@ -528,7 +538,7 @@ static void run_remote(void)
 		exit(1);
 	}
 
-	if (platform_init(&platform_event_fd, NULL) < 0) {
+	if (platform_init(&platform_event_fd, send_edgemask_change_cb) < 0) {
 		elog("platform_init() failed\n");
 		exit(1);
 	}
@@ -898,6 +908,82 @@ static void bind_hotkeys(void)
 	}
 }
 
+static int record_edgeevent(struct edge_state* es, edgeevent_t evtype, uint64_t when)
+{
+	if (evtype == es->last_evtype)
+		return 1;
+
+	es->evidx = (es->evidx + 1) % EDGESTATE_HISTLEN;
+	es->event_times[es->evidx] = when;
+	es->last_evtype = evtype;
+	return 0;
+}
+
+static uint64_t get_edgehist_entry(const struct edge_state* es, int rel_idx)
+{
+	int idx;
+
+	assert(rel_idx < EDGESTATE_HISTLEN && rel_idx >= 0);
+	idx = (es->evidx - rel_idx + EDGESTATE_HISTLEN) % EDGESTATE_HISTLEN;
+
+	return es->event_times[idx];
+}
+
+static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeevent_t evtype)
+{
+	int status, start_idx;
+	keycode_t* modkeys;
+	uint64_t duration, now_us = get_microtime();
+
+	status = record_edgeevent(ehist, evtype, now_us);
+
+	if (status)
+		return status;
+
+	if (config->mouseswitch.type == MS_MULTITAP && evtype == EE_ARRIVE) {
+		/*
+		 * How many entries back to look in the edge-event history to
+		 * find the first event of the multi-tap sequence of which
+		 * this might be the final element: single-tap looks at the
+		 * just-recorded entry (#0), double tap looks back at #2
+		 * (skipping over the EE_DEPART at #1), triple-tap looks at #4
+		 * (skipping over two EE_DEPARTs and an EE_ARRIVE), etc.
+		 */
+		start_idx = (config->mouseswitch.num - 1) * 2;
+
+		duration = now_us - get_edgehist_entry(ehist, start_idx);
+		if (duration < config->mouseswitch.window) {
+			modkeys = get_current_modifiers();
+			switch_to_neighbor(dir, modkeys);
+			xfree(modkeys);
+		}
+	}
+
+	return 0;
+}
+
+static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char* srcname,
+                             uint32_t old, uint32_t new)
+{
+	direction_t dir;
+	dirmask_t dirmask;
+	edgeevent_t edgeevtype;
+
+	for_each_direction (dir) {
+		dirmask = 1U << dir;
+		if ((old & dirmask) != (new & dirmask)) {
+			edgeevtype = (new & dirmask) ? EE_ARRIVE : EE_DEPART;
+			if (trigger_edgeevent(&hist[dir], dir, edgeevtype))
+				elog("out-of-sync edge event on %s ignored\n", srcname);
+		}
+	}
+}
+
+static void trigger_edgeevent_cb(uint32_t old, uint32_t new)
+{
+	check_edgeevents(config->master.edgehist, "master", old, new);
+}
+
 static void handle_master_message(struct remote* rmt, const struct message* msg)
 {
 	int loglen;
@@ -937,6 +1023,15 @@ static void handle_master_message(struct remote* rmt, const struct message* msg)
 		logmsg = msg->extra.buf;
 		elog("%s: %.*s%s", rmt->alias, loglen, logmsg,
 		     logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
+		break;
+
+	case MT_EDGEMASKCHANGE:
+		if ((msg->edgemaskchange.old & ~ALLDIRS_MASK)
+		    || (msg->edgemaskchange.new & ~ALLDIRS_MASK))
+			fail_remote(rmt, "invalid edge mask");
+		else
+			check_edgeevents(rmt->edgehist, rmt->alias,
+			                 msg->edgemaskchange.old, msg->edgemaskchange.new);
 		break;
 
 	default:
@@ -1156,7 +1251,7 @@ int main(int argc, char** argv)
 		run_remote();
 	}
 
-	if (platform_init(&platform_event_fd, NULL)) {
+	if (platform_init(&platform_event_fd, trigger_edgeevent_cb)) {
 		elog("platform_init failed\n");
 		exit(1);
 	}
