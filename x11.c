@@ -443,6 +443,28 @@ static int xerr_ignore(Display* d, XErrorEvent* xev)
 	return 0;
 }
 
+/*
+ * Tell X that we'd like to be informed about events from the given window.
+ *
+ * It seems that there's a race, however, between our attempt to do this
+ * (e.g. upon learning that the window in question exists) and it potentially
+ * being destroyed.  If we call XSelectInput on it but it's already gone,
+ * we'll get a BadWindow error, so we just ignore that if it happens.  We do
+ * however call XFlush() before switching error handlers so as to avoid
+ * inappropriately ignoring errors on any requests that happened to be queued
+ * at the time of the call.
+ */
+static void request_window_events(Window w)
+{
+	int (*prev_errhandler)(Display*, XErrorEvent*);
+
+	XFlush(xdisp);
+	prev_errhandler = XSetErrorHandler(xerr_ignore);
+	XSelectInput(xdisp, w, PointerMotionMask|SubstructureNotifyMask);
+	XFlush(xdisp);
+	XSetErrorHandler(prev_errhandler);
+}
+
 int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 {
 	unsigned int i;
@@ -510,8 +532,7 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 			mouse_edge_handler = NULL;
 		} else {
 			for (i = 0; i < num_windows; i++)
-				XSelectInput(xdisp, all_windows[i],
-				             PointerMotionMask|SubstructureNotifyMask);
+				request_window_events(all_windows[i]);
 			xfree(all_windows);
 		}
 	}
@@ -879,7 +900,6 @@ static void handle_local_mousemove(XMotionEvent* mev)
 
 static void handle_event(XEvent* ev)
 {
-	int (*prev_errhandler)(Display*, XErrorEvent*);
 
 	switch (ev->type) {
 	case MotionNotify:
@@ -890,24 +910,8 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case CreateNotify:
-		if (opmode == MASTER && mouse_edge_handler) {
-			/*
-			 * It seems there's a race between our attempt to request
-			 * notification about events from a window (upon learning of
-			 * its creation) and it potentially being destroyed.  If we
-			 * try to call XSelectInput on it here but it's already gone,
-			 * we'll get a BadWindow error, so we'll just ignore that if
-			 * it happens.  We do however call XFlush() before switching
-			 * error handlers so as to avoid inappropriately ignoring
-			 * errors on any queued requests.
-			 */
-			XFlush(xdisp);
-			prev_errhandler = XSetErrorHandler(xerr_ignore);
-			XSelectInput(xdisp, ev->xcreatewindow.window,
-			             PointerMotionMask|SubstructureNotifyMask);
-			XFlush(xdisp);
-			XSetErrorHandler(prev_errhandler);
-		}
+		if (opmode == MASTER && mouse_edge_handler)
+			request_window_events(ev->xcreatewindow.window);
 		break;
 
 	case KeyPress:
