@@ -566,8 +566,9 @@ static void indicate_switch(struct remote* from, struct remote* to)
 		break;
 
 	case SI_DIM_INACTIVE:
-		transition_brightness(from, 1.0, si->brightness, si->duration,
-		                      si->fade_steps);
+		if (from != to)
+			transition_brightness(from, 1.0, si->brightness, si->duration,
+			                      si->fade_steps);
 		transition_brightness(to, si->brightness, 1.0, si->duration,
 		                      si->fade_steps);
 		break;
@@ -907,7 +908,9 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->alias);
 		if (config->switch_indication.type == SI_DIM_INACTIVE)
-			send_setbrightness(rmt, config->switch_indication.brightness);
+			transition_brightness(rmt, 1.0, config->switch_indication.brightness,
+			                      config->switch_indication.duration,
+			                      config->switch_indication.fade_steps);
 		break;
 
 	case MT_SETCLIPBOARD:
