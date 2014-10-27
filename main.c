@@ -99,6 +99,8 @@ static void run_scheduled_calls(uint64_t when)
 	}
 }
 
+static void switch_to_master(void);
+
 static void disconnect_remote(struct remote* rmt)
 {
 	pid_t pid;
@@ -134,7 +136,8 @@ static void disconnect_remote(struct remote* rmt)
 
 	rmt->sshpid = -1;
 
-	/* FIXME: if (rmt == active_remote) { ... } */
+	if (rmt == active_remote)
+		switch_to_master();
 }
 
 #define MAX_RECONNECT_INTERVAL (30 * 1000 * 1000)
@@ -641,6 +644,16 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey
 	active_remote = switch_to;
 
 	return 1;
+}
+
+static void switch_to_master(void)
+{
+	struct noderef m = { .type = NT_MASTER, .node = NULL, };
+	keycode_t* modkeys = get_current_modifiers();
+
+	switch_to_node(&m, modkeys, 0);
+
+	xfree(modkeys);
 }
 
 static int switch_to_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
