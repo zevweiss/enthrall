@@ -140,7 +140,8 @@ static void disconnect_remote(struct remote* rmt)
 		switch_to_master();
 }
 
-#define MAX_RECONNECT_INTERVAL (30 * 1000 * 1000)
+#define RECONNECT_INTERVAL_UNIT (500 * 1000) /* half a second */
+#define MAX_RECONNECT_INTERVAL ((30 * 1000 * 1000) / RECONNECT_INTERVAL_UNIT)
 #define MAX_RECONNECT_ATTEMPTS 10
 
 static void fail_remote(struct remote* rmt, const char* reason)
@@ -163,11 +164,11 @@ static void fail_remote(struct remote* rmt, const char* reason)
 	lshift = rmt->failcount - 1;
 	if (lshift > (CHAR_BIT * sizeof(uint64_t) - 1))
 		lshift = (CHAR_BIT * sizeof(uint64_t)) - 1;
-	tmp = (1ULL << rmt->failcount) * 500 * 1000;
+	tmp = (1ULL << lshift);
 	if (tmp > MAX_RECONNECT_INTERVAL)
 		tmp = MAX_RECONNECT_INTERVAL;
 
-	rmt->next_reconnect_time = get_microtime() + tmp;
+	rmt->next_reconnect_time = get_microtime() + (tmp * RECONNECT_INTERVAL_UNIT);
 }
 
 static void enqueue_message(struct remote* rmt, struct message* msg)
