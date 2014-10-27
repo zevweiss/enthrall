@@ -127,4 +127,36 @@ struct kvmap* unflatten_kvmap(const void* buf, size_t len);
 
 void set_clipboard_from_buf(const void* buf, size_t len);
 
+/*
+ * Make a function to produce a gamma value for index 'idx' in a gamma table
+ * by scaling (by compressing/expanding the X axis and interpolating, not just
+ * multiplying the absolute value along the Y axis, so as to preserve relative
+ * RGB curves) the values in the given 'from' array ('numents' long) 'scale'.
+ *
+ * This is done this way because OSX uses floats (with a "CGGammaValue"
+ * typedef) for its gamma tables, whereas X11 uses unsigned shorts.
+ */
+#define MAKE_GAMMA_SCALE_FN(name, type, defloat) \
+	type name(type* from, int numents, int idx, float scale) \
+	{ \
+		float f_idx, f_loidx, frac; \
+		int loidx; \
+		float lo, hi; \
+		\
+		assert(scale >= 0.0); \
+		\
+		f_idx = (float)idx * scale; \
+		\
+		frac = modff(f_idx, &f_loidx); \
+		loidx = lrintf(f_loidx); \
+		\
+		if (loidx >= numents - 1) \
+			return from[numents-1]; \
+		\
+		lo = (float)(from[loidx]); \
+		hi = (float)(from[loidx+1]); \
+		\
+		return defloat(lo + (frac * (hi - lo))); \
+	}
+
 #endif /* MISC_H */

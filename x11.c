@@ -1071,28 +1071,7 @@ int set_clipboard_text(const char* text)
 	return 0;
 }
 
-static unsigned short gamma_scale(unsigned short* from, int numents, int idx, float scale)
-{
-	float f_idx, f_loidx, frac;
-	int loidx;
-	float lo, hi;
-
-	if (scale == 0.0)
-		return 0;
-
-	f_idx = (float)idx * scale;
-
-	frac = modff(f_idx, &f_loidx);
-	loidx = lrintf(f_loidx);
-
-	if (loidx >= numents - 1)
-		return from[numents-1];
-
-	lo = (float)from[loidx];
-	hi = (float)from[loidx+1];
-
-	return lrintf(lo + (frac * (hi - lo)));
-}
+static MAKE_GAMMA_SCALE_FN(gamma_scale, unsigned short, lrintf);
 
 static void scale_gamma(const XRRCrtcGamma* from, XRRCrtcGamma* to, float f)
 {

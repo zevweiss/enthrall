@@ -200,33 +200,12 @@ static void set_gamma_table(CGDirectDisplayID disp, const struct gamma_table* gt
 }
 
 /*
- * Produce a gamma value for index 'idx' in a gamma table by scaling (by
- * compressing/expanding the X axis and interpolating, not just multiplying
- * the absolute value along the Y axis, so as to preserve relative RGB curves)
- * the values in the given 'from' array ('numents' long) 'scale'.
+ * The identity macro (ahem), for use as 'defloat' in MAKE_GAMMA_SCALE_FN,
+ * because CGGammaValue is a float to start with.
  */
-static CGGammaValue gamma_scale(CGGammaValue* from, uint32_t numents, int idx, float scale)
-{
-	float f_idx, f_loidx, frac;
-	int loidx;
-	CGGammaValue lo, hi;
+#define id(x) x
 
-	if (scale == 0.0)
-		return 0.0;
-
-	f_idx = (float)idx * scale;
-
-	frac = modff(f_idx, &f_loidx);
-	loidx = lrintf(f_loidx);
-
-	if (loidx >= numents - 1)
-		return from[numents-1];
-
-	lo = from[loidx];
-	hi = from[loidx+1];
-
-	return lo + (frac * (hi - lo));
-}
+static MAKE_GAMMA_SCALE_FN(gamma_scale, CGGammaValue, id);
 
 static void scale_gamma_table(const struct gamma_table* from, struct gamma_table* to,
                               float scale)
