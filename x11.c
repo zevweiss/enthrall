@@ -1067,13 +1067,27 @@ int set_clipboard_text(const char* text)
 	return 0;
 }
 
-static inline unsigned short scale_gamma_val(unsigned short g, float f)
+static unsigned short gamma_scale(unsigned short* from, int numents, int idx, float scale)
 {
-	float fres = (float)g * f;
-	if (fres > (float)USHRT_MAX)
-		return USHRT_MAX;
-	else
-		return lrintf(fres);
+	float f_idx, f_loidx, frac;
+	int loidx;
+	float lo, hi;
+
+	if (scale == 0.0)
+		return 0;
+
+	f_idx = (float)idx * scale;
+
+	frac = modff(f_idx, &f_loidx);
+	loidx = lrintf(f_loidx);
+
+	if (loidx >= numents - 1)
+		return from[numents-1];
+
+	lo = (float)from[loidx];
+	hi = (float)from[loidx+1];
+
+	return lrintf(lo + (frac * (hi - lo)));
 }
 
 static void scale_gamma(const XRRCrtcGamma* from, XRRCrtcGamma* to, float f)
@@ -1083,9 +1097,9 @@ static void scale_gamma(const XRRCrtcGamma* from, XRRCrtcGamma* to, float f)
 	assert(from->size == to->size);
 
 	for (i = 0; i < to->size; i++) {
-		to->red[i] = scale_gamma_val(from->red[i], f);
-		to->green[i] = scale_gamma_val(from->green[i], f);
-		to->blue[i] = scale_gamma_val(from->blue[i], f);
+		to->red[i] = gamma_scale(from->red, from->size, i, f);
+		to->green[i] = gamma_scale(from->green, from->size, i, f);
+		to->blue[i] = gamma_scale(from->blue, from->size, i, f);
 	}
 }
 

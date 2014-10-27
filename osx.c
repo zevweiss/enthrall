@@ -199,15 +199,33 @@ static void set_gamma_table(CGDirectDisplayID disp, const struct gamma_table* gt
 		elog("CGSetDisplayTransferByTable() failed (%d)\n", err);
 }
 
-static inline CGGammaValue scale_gamma(CGGammaValue g, float scale)
+/*
+ * Produce a gamma value for index 'idx' in a gamma table by scaling (by
+ * compressing/expanding the X axis and interpolating, not just multiplying
+ * the absolute value along the Y axis, so as to preserve relative RGB curves)
+ * the values in the given 'from' array ('numents' long) 'scale'.
+ */
+static CGGammaValue gamma_scale(CGGammaValue* from, uint32_t numents, int idx, float scale)
 {
-	CGGammaValue res = g * scale;
-	if (res > 1.0)
-		return 1.0;
-	else if (res < 0.0)
+	float f_idx, f_loidx, frac;
+	int loidx;
+	CGGammaValue lo, hi;
+
+	if (scale == 0.0)
 		return 0.0;
-	else
-		return res;
+
+	f_idx = (float)idx * scale;
+
+	frac = modff(f_idx, &f_loidx);
+	loidx = lrintf(f_loidx);
+
+	if (loidx >= numents - 1)
+		return from[numents-1];
+
+	lo = from[loidx];
+	hi = from[loidx+1];
+
+	return lo + (frac * (hi - lo));
 }
 
 static void scale_gamma_table(const struct gamma_table* from, struct gamma_table* to,
@@ -218,9 +236,9 @@ static void scale_gamma_table(const struct gamma_table* from, struct gamma_table
 	assert(from->numents == to->numents);
 
 	for (i = 0; i < to->numents; i++) {
-		to->red[i] = scale_gamma(from->red[i], scale);
-		to->green[i] = scale_gamma(from->green[i], scale);
-		to->blue[i] = scale_gamma(from->blue[i], scale);
+		to->red[i] = gamma_scale(from->red, from->numents, i, scale);
+		to->green[i] = gamma_scale(from->green, from->numents, i, scale);
+		to->blue[i] = gamma_scale(from->blue, from->numents, i, scale);
 	}
 }
 
