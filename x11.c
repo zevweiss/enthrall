@@ -426,6 +426,23 @@ static int get_all_xwindows(Window** wlist, unsigned int* nwin)
 	return append_child_windows((*wlist)[0], wlist, nwin);
 }
 
+static int xerr_abort(Display* d, XErrorEvent* xev)
+{
+	char errbuf[1024];
+
+	XGetErrorText(d,  xev->error_code, errbuf, sizeof(errbuf));
+	errbuf[sizeof(errbuf)-1] = '\0';
+
+	elog("X Error: request %hhu.%hhu -> %s\n", xev->request_code,
+	     xev->minor_code, errbuf);
+	abort();
+}
+
+static int xerr_ignore(Display* d, XErrorEvent* xev)
+{
+	return 0;
+}
+
 int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 {
 	unsigned int i;
@@ -438,6 +455,8 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 
 	if (opmode == REMOTE && kvmap_get(remote_params, "DISPLAY"))
 		setenv("DISPLAY", kvmap_get(remote_params, "DISPLAY"), 1);
+
+	XSetErrorHandler(xerr_abort);
 
 	x11_keycodes_init();
 
@@ -860,6 +879,8 @@ static void handle_local_mousemove(XMotionEvent* mev)
 
 static void handle_event(XEvent* ev)
 {
+	int (*prev_errhandler)(Display*, XErrorEvent*);
+
 	switch (ev->type) {
 	case MotionNotify:
 		if (active_remote)
@@ -870,9 +891,22 @@ static void handle_event(XEvent* ev)
 
 	case CreateNotify:
 		if (opmode == MASTER && mouse_edge_handler) {
+			/*
+			 * It seems there's a race between our attempt to request
+			 * notification about events from a window (upon learning of
+			 * its creation) and it potentially being destroyed.  If we
+			 * try to call XSelectInput on it here but it's already gone,
+			 * we'll get a BadWindow error, so we'll just ignore that if
+			 * it happens.  We do however call XFlush() before switching
+			 * error handlers so as to avoid inappropriately ignoring
+			 * errors on any queued requests.
+			 */
+			XFlush(xdisp);
+			prev_errhandler = XSetErrorHandler(xerr_ignore);
 			XSelectInput(xdisp, ev->xcreatewindow.window,
 			             PointerMotionMask|SubstructureNotifyMask);
 			XFlush(xdisp);
+			XSetErrorHandler(prev_errhandler);
 		}
 		break;
 
