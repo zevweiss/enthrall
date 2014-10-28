@@ -723,12 +723,18 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
 	switch (a->type) {
-	case AT_SWITCH:
-		focus_neighbor(a->dir, modkeys, 1);
-		break;
-
-	case AT_SWITCHTO:
-		focus_node(&a->node, modkeys, 1);
+	case AT_FOCUS:
+		switch (a->target.type) {
+		case FT_DIRECTION:
+			focus_neighbor(a->target.dir, modkeys, 1);
+			break;
+		case FT_NODE:
+			focus_node(&a->target.node, modkeys, 1);
+			break;
+		default:
+			elog("bad focus-target type %s\n", a->target.type);
+			break;
+		}
 		break;
 
 	case AT_RECONNECT:
@@ -759,8 +765,8 @@ static void bind_hotkeys(void)
 	struct hotkey* k;
 
 	for (k = config->hotkeys; k; k = k->next) {
-		if (k->action.type == AT_SWITCHTO)
-			resolve_noderef(&k->action.node);
+		if (k->action.type == AT_FOCUS && k->action.target.type == FT_NODE)
+			resolve_noderef(&k->action.target.node);
 		if (bind_hotkey(k->key_string, action_cb, &k->action))
 			exit(1);
 	}

@@ -29,6 +29,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	struct action action;
 	struct focus_hint focushint;
 	struct mouse_switch mouseswitch;
+	struct focus_target focus_target;
 	struct {
 		float duration;
 		int numsteps;
@@ -94,6 +95,7 @@ static struct remote* new_uninit_remote(void)
 %type <focushint> focushint
 %type <mouseswitch> mouseswitch
 %type <dim_fade> dim_fade
+%type <focus_target> focus_target
 
 %type <i> port_setting fade_steps show_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -253,13 +255,18 @@ master_opt: remoteshell_setting {
 	st->cfg->master.neighbors[$1] = $3;
 };
 
-action: KW_FOCUS DIRECTION {
-	$$.type = AT_SWITCH;
-	$$.dir = $2;
+focus_target: DIRECTION {
+	$$.type = FT_DIRECTION;
+	$$.dir = $1;
 }
-| KW_FOCUS node {
-	$$.type = AT_SWITCHTO;
-	$$.node = $2;
+| node {
+	$$.type = FT_NODE;
+	$$.node = $1;
+};
+
+action: KW_FOCUS focus_target {
+	$$.type = AT_FOCUS;
+	$$.target = $2;
 }
 | KW_RECONNECT {
 	$$.type = AT_RECONNECT;

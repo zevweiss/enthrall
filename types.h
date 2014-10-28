@@ -67,17 +67,15 @@ typedef uint32_t dirmask_t;
 
 #define ALLDIRS_MASK (LEFTMASK|RIGHTMASK|UPMASK|DOWNMASK)
 
-typedef enum {
-	NT_NONE = 0,
-	NT_REMOTE,
-	NT_MASTER,
-
-	/* initial state before a name gets resolved to a remote */
-	NT_REMOTE_TMPNAME,
-} nodereftype_t;
-
 struct noderef {
-	nodereftype_t type;
+	enum {
+		NT_NONE = 0,
+		NT_REMOTE,
+		NT_MASTER,
+
+		/* initial state before a name gets resolved to a remote */
+		NT_REMOTE_TMPNAME,
+	} type;
 	union {
 		char* name;
 		struct remote* node;
@@ -160,18 +158,25 @@ struct remote {
 	struct remote* next;
 };
 
-typedef enum {
-	AT_SWITCH,
-	AT_SWITCHTO,
-	AT_RECONNECT,
-	AT_QUIT,
-} actiontype_t;
-
-struct action {
-	actiontype_t type;
+struct focus_target {
+	enum {
+		FT_DIRECTION,
+		FT_NODE,
+	} type;
 	union {
 		direction_t dir;
 		struct noderef node;
+	};
+};
+
+struct action {
+	enum {
+		AT_FOCUS,
+		AT_RECONNECT,
+		AT_QUIT,
+	} type;
+	union {
+		struct focus_target target;
 	};
 };
 
