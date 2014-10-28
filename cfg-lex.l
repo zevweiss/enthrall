@@ -40,8 +40,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "identity-file"	return KW_IDENTITYFILE;
 "hotkey"	return KW_HOTKEY;
 "param"		return KW_PARAM;
-"switch"	return KW_SWITCH;
-"switch-to"	return KW_SWITCHTO;
+"focus"		return KW_FOCUS;
 "reconnect"	return KW_RECONNECT;
 "quit"		return KW_QUIT;
 

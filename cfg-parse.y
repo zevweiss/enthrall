@@ -80,7 +80,7 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_MASTER KW_REMOTE
 
-%token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
+%token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_FOCUS KW_RECONNECT
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
 %token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
 
@@ -253,11 +253,11 @@ master_opt: remoteshell_setting {
 	st->cfg->master.neighbors[$1] = $3;
 };
 
-action: KW_SWITCH DIRECTION {
+action: KW_FOCUS DIRECTION {
 	$$.type = AT_SWITCH;
 	$$.dir = $2;
 }
-| KW_SWITCHTO node {
+| KW_FOCUS node {
 	$$.type = AT_SWITCHTO;
 	$$.node = $2;
 }
