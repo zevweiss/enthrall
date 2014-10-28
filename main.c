@@ -21,15 +21,14 @@
 
 #include "cfg-parse.tab.h"
 
-struct config* config;
+struct remote* active_remote = NULL;
+opmode_t opmode;
+
+static char* progname;
+
+static struct config* config;
 
 #define for_each_remote(r) for (r = config->remotes; r; r = r->next)
-
-struct remote* active_remote = NULL;
-
-char* progname;
-
-opmode_t opmode;
 
 struct scheduled_call {
 	void (*fn)(void* arg);
@@ -559,27 +558,27 @@ static void transition_brightness(struct remote* node, float from, float to,
 
 static void indicate_switch(struct remote* from, struct remote* to)
 {
-	struct switch_indication* si = &config->switch_indication;
+	struct focus_hint* fh = &config->focus_hint;
 
-	switch (si->type) {
-	case SI_NONE:
+	switch (fh->type) {
+	case FH_NONE:
 		break;
 
-	case SI_DIM_INACTIVE:
+	case FH_DIM_INACTIVE:
 		if (from != to)
-			transition_brightness(from, 1.0, si->brightness, si->duration,
-			                      si->fade_steps);
-		transition_brightness(to, si->brightness, 1.0, si->duration,
-		                      si->fade_steps);
+			transition_brightness(from, 1.0, fh->brightness, fh->duration,
+			                      fh->fade_steps);
+		transition_brightness(to, fh->brightness, 1.0, fh->duration,
+		                      fh->fade_steps);
 		break;
 
-	case SI_FLASH_ACTIVE:
-		transition_brightness(to, si->brightness, 1.0, si->duration,
-		                      si->fade_steps);
+	case FH_FLASH_ACTIVE:
+		transition_brightness(to, fh->brightness, 1.0, fh->duration,
+		                      fh->fade_steps);
 		break;
 
 	default:
-		elog("unknown switch_indication type %d\n", si->type);
+		elog("unknown focus_hint type %d\n", fh->type);
 		break;
 	}
 }
@@ -622,8 +621,8 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey
 	 * switch is performed.
 	 */
 	if (switch_to != active_remote
-	    || config->indicate_nullswitch == NS_YES
-	    || (config->indicate_nullswitch == NS_HOTKEYONLY && from_hotkey))
+	    || config->show_nullswitch == NS_YES
+	    || (config->show_nullswitch == NS_HOTKEYONLY && from_hotkey))
 		indicate_switch(active_remote, switch_to);
 
 	if (switch_to == active_remote)
@@ -907,10 +906,10 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->alias);
-		if (config->switch_indication.type == SI_DIM_INACTIVE)
-			transition_brightness(rmt, 1.0, config->switch_indication.brightness,
-			                      config->switch_indication.duration,
-			                      config->switch_indication.fade_steps);
+		if (config->focus_hint.type == FH_DIM_INACTIVE)
+			transition_brightness(rmt, 1.0, config->focus_hint.brightness,
+			                      config->focus_hint.duration,
+			                      config->focus_hint.fade_steps);
 		break;
 
 	case MT_SETCLIPBOARD:

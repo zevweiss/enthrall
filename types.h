@@ -181,11 +181,11 @@ struct hotkey {
 	struct hotkey* next;
 };
 
-struct switch_indication {
+struct focus_hint {
 	enum {
-		SI_NONE = 0,
-		SI_DIM_INACTIVE,
-		SI_FLASH_ACTIVE,
+		FH_NONE = 0,
+		FH_DIM_INACTIVE,
+		FH_FLASH_ACTIVE,
 	} type;
 	float brightness;
 	uint64_t duration;
@@ -212,14 +212,14 @@ struct config {
 	struct remote* remotes;
 	struct hotkey* hotkeys;
 
-	struct switch_indication switch_indication;
+	struct focus_hint focus_hint;
 	struct mouse_switch mouseswitch;
 
 	enum {
 		NS_NO,
 		NS_YES,
 		NS_HOTKEYONLY,
-	} indicate_nullswitch;
+	} show_nullswitch;
 
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;

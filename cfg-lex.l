@@ -45,15 +45,15 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "reconnect"	return KW_RECONNECT;
 "quit"		return KW_QUIT;
 
-"switch-indicator"	return KW_SWITCHINDICATOR;
-"dim-inactive"		return KW_DIMINACTIVE;
-"flash-active"		return KW_FLASHACTIVE;
-"none"			return KW_NONE;
+"show-focus"	return KW_SHOWFOCUS;
+"dim-inactive"	return KW_DIMINACTIVE;
+"flash-active"	return KW_FLASHACTIVE;
+"none"		return KW_NONE;
 
 "mouse-switch"	return KW_MOUSESWITCH;
 "multi-tap"	return KW_MULTITAP;
 
-"indicate-null-switch"	return KW_INDICATENULLSWITCH;
+"show-null-switch"	return KW_SHOWNULLSWITCH;
 "hotkey-only"		return KW_HOTKEYONLY;
 
 "master"	return KW_MASTER;

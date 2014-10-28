@@ -27,7 +27,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	direction_t dir;
 	struct noderef noderef;
 	struct action action;
-	struct switch_indication switchind;
+	struct focus_hint focushint;
 	struct mouse_switch mouseswitch;
 	struct {
 		float duration;
@@ -81,9 +81,8 @@ static struct remote* new_uninit_remote(void)
 %token KW_MASTER KW_REMOTE
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_SWITCH KW_SWITCHTO KW_RECONNECT
-%token KW_IDENTITYFILE KW_PARAM KW_SWITCHINDICATOR KW_DIMINACTIVE KW_FLASHACTIVE
-%token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_INDICATENULLSWITCH KW_HOTKEYONLY
-%token KW_QUIT
+%token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
+%token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -92,11 +91,11 @@ static struct remote* new_uninit_remote(void)
 %type <d> realnum
 %type <noderef> node
 %type <action> action
-%type <switchind> switchind
+%type <focushint> focushint
 %type <mouseswitch> mouseswitch
 %type <dim_fade> dim_fade
 
-%type <i> port_setting fade_steps indicate_nullswitch
+%type <i> port_setting fade_steps show_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
 %type <str> identityfile_setting
 
@@ -173,8 +172,8 @@ dim_fade: EMPTY {
 	$$.numsteps = $2;
 };
 
-switchind: KW_DIMINACTIVE realnum dim_fade {
-	$$.type = SI_DIM_INACTIVE;
+focushint: KW_DIMINACTIVE realnum dim_fade {
+	$$.type = FH_DIM_INACTIVE;
 	$$.brightness = $2;
 	$$.duration = (uint64_t)($3.duration * 1000000);
 	$$.fade_steps = $3.numsteps;
@@ -184,7 +183,7 @@ switchind: KW_DIMINACTIVE realnum dim_fade {
 		fail_parse(st, "dim-inactive fade-steps must be >= 1");
 }
 | KW_FLASHACTIVE realnum realnum fade_steps {
-	$$.type = SI_FLASH_ACTIVE;
+	$$.type = FH_FLASH_ACTIVE;
 	$$.brightness = $2;
 	$$.duration = (uint64_t)($3 * 1000000);
 	$$.fade_steps = $4;
@@ -194,7 +193,7 @@ switchind: KW_DIMINACTIVE realnum dim_fade {
 		fail_parse(st, "flash-active fade-steps must be >= 1");
 }
 | KW_NONE {
-	$$.type = SI_NONE;
+	$$.type = FH_NONE;
 };
 
 mouseswitch: KW_MULTITAP INTEGER realnum {
@@ -212,7 +211,7 @@ mouseswitch: KW_MULTITAP INTEGER realnum {
 	$$.type = MS_NONE;
 };
 
-indicate_nullswitch: KW_YES { $$ = NS_YES; }
+show_nullswitch: KW_YES { $$ = NS_YES; }
 | KW_NO { $$ = NS_NO; }
 | KW_HOTKEYONLY { $$ = NS_HOTKEYONLY; };
 
@@ -234,14 +233,14 @@ master_opt: remoteshell_setting {
 | remotecmd_setting {
 	st->cfg->ssh_defaults.remotecmd = $1;
 }
-| KW_SWITCHINDICATOR EQ switchind {
-	st->cfg->switch_indication = $3;
+| KW_SHOWFOCUS EQ focushint {
+	st->cfg->focus_hint = $3;
 }
 | KW_MOUSESWITCH EQ mouseswitch {
 	st->cfg->mouseswitch = $3;
 }
-| KW_INDICATENULLSWITCH EQ indicate_nullswitch {
-	st->cfg->indicate_nullswitch = $3;
+| KW_SHOWNULLSWITCH EQ show_nullswitch {
+	st->cfg->show_nullswitch = $3;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));
