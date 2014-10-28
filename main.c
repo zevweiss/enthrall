@@ -21,7 +21,7 @@
 
 #include "cfg-parse.tab.h"
 
-struct remote* active_remote = NULL;
+struct remote* focused_remote = NULL;
 opmode_t opmode;
 
 static char* progname;
@@ -98,7 +98,7 @@ static void run_scheduled_calls(uint64_t when)
 	}
 }
 
-static void switch_to_master(void);
+static void focus_master(void);
 
 static void disconnect_remote(struct remote* rmt)
 {
@@ -135,8 +135,8 @@ static void disconnect_remote(struct remote* rmt)
 
 	rmt->sshpid = -1;
 
-	if (rmt == active_remote)
-		switch_to_master();
+	if (rmt == focused_remote)
+		focus_master();
 }
 
 #define RECONNECT_INTERVAL_UNIT (500 * 1000) /* half a second */
@@ -589,13 +589,13 @@ static struct xypoint saved_master_mousepos;
  * Returns non-zero on a successful "real" switch, or zero if no actual switch
  * was performed (i.e. the switched-to node is the same as the current node).
  */
-static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
+static int focus_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
 {
 	struct remote* switch_to;
 
 	switch (n->type) {
 	case NT_NONE:
-		switch_to = active_remote;
+		switch_to = focused_remote;
 		break;
 
 	case NT_MASTER:
@@ -605,7 +605,7 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey
 	case NT_REMOTE:
 		switch_to = n->node;
 		if (switch_to->state != CS_CONNECTED) {
-			elog("remote '%s' not connected, can't switch to\n",
+			elog("remote '%s' not connected, can't focus\n",
 			     switch_to->alias);
 			return 0;
 		}
@@ -620,18 +620,18 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey
 	 * If configured to do so, give visual indication even if no actual
 	 * switch is performed.
 	 */
-	if (switch_to != active_remote
+	if (switch_to != focused_remote
 	    || config->show_nullswitch == NS_YES
 	    || (config->show_nullswitch == NS_HOTKEYONLY && from_hotkey))
-		indicate_switch(active_remote, switch_to);
+		indicate_switch(focused_remote, switch_to);
 
-	if (switch_to == active_remote)
+	if (switch_to == focused_remote)
 		return 0;
 
-	if (active_remote && !switch_to) {
+	if (focused_remote && !switch_to) {
 		ungrab_inputs();
 		set_mousepos(saved_master_mousepos);
-	} else if (!active_remote && switch_to) {
+	} else if (!focused_remote && switch_to) {
 		saved_master_mousepos = get_mousepos();
 		grab_inputs();
 	}
@@ -639,29 +639,29 @@ static int switch_to_node(struct noderef* n, keycode_t* modkeys, int from_hotkey
 	if (switch_to)
 		set_mousepos(screen_center);
 
-	transfer_clipboard(active_remote, switch_to);
-	transfer_modifiers(active_remote, switch_to, modkeys);
+	transfer_clipboard(focused_remote, switch_to);
+	transfer_modifiers(focused_remote, switch_to, modkeys);
 
-	active_remote = switch_to;
+	focused_remote = switch_to;
 
 	return 1;
 }
 
-static void switch_to_master(void)
+static void focus_master(void)
 {
 	struct noderef m = { .type = NT_MASTER, .node = NULL, };
 	keycode_t* modkeys = get_current_modifiers();
 
-	switch_to_node(&m, modkeys, 0);
+	focus_node(&m, modkeys, 0);
 
 	xfree(modkeys);
 }
 
-static int switch_to_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
+static int focus_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
 {
-	struct noderef* n = &(active_remote ? active_remote->neighbors
+	struct noderef* n = &(focused_remote ? focused_remote->neighbors
 	                      : config->master.neighbors)[dir];
-	return switch_to_node(n, modkeys, from_hotkey);
+	return focus_node(n, modkeys, from_hotkey);
 }
 
 static void clear_ssh_config(struct ssh_config* c)
@@ -724,11 +724,11 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 
 	switch (a->type) {
 	case AT_SWITCH:
-		switch_to_neighbor(a->dir, modkeys, 1);
+		focus_neighbor(a->dir, modkeys, 1);
 		break;
 
 	case AT_SWITCHTO:
-		switch_to_node(&a->node, modkeys, 1);
+		focus_node(&a->node, modkeys, 1);
 		break;
 
 	case AT_RECONNECT:
@@ -824,11 +824,11 @@ static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 		return;
 	}
 
-	if (active_remote) {
+	if (focused_remote) {
 		msg = new_message(MT_SETMOUSEPOSSCREENREL);
 		msg->setmouseposscreenrel.xpos = x;
 		msg->setmouseposscreenrel.ypos = y;
-		enqueue_message(active_remote, msg);
+		enqueue_message(focused_remote, msg);
 	} else {
 		set_mousepos_screenrel(x, y);
 	}
@@ -860,7 +860,7 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 		duration = now_us - get_edgehist_entry(ehist, start_idx);
 		if (duration < config->mouseswitch.window) {
 			modkeys = get_current_modifiers();
-			if (switch_to_neighbor(dir, modkeys, 0))
+			if (focus_neighbor(dir, modkeys, 0))
 				edgeswitch_reposition(dir, src_xpos, src_ypos);
 			xfree(modkeys);
 		}
@@ -919,11 +919,11 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 			break;
 		}
 		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
-		if (active_remote) {
+		if (focused_remote) {
 			resp = new_message(MT_SETCLIPBOARD);
 			resp->extra.buf = get_clipboard_text();
 			resp->extra.len = strlen(resp->extra.buf);
-			enqueue_message(active_remote, resp);
+			enqueue_message(focused_remote, resp);
 		}
 		break;
 

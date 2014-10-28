@@ -102,7 +102,7 @@ typedef enum {
 
 extern opmode_t opmode;
 
-extern struct remote* active_remote;
+extern struct remote* focused_remote;
 
 void run_remote(void);
 extern struct kvmap* remote_params;
