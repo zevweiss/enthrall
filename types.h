@@ -206,6 +206,15 @@ struct mouse_switch {
 	uint64_t window;
 };
 
+struct link {
+	struct {
+		struct noderef node;
+		direction_t dir;
+	} a, b;
+
+	struct link* next;
+};
+
 struct master {
 	struct noderef neighbors[NUM_DIRECTIONS];
 	struct edge_state edgehist[NUM_DIRECTIONS];
@@ -215,6 +224,7 @@ struct config {
 	char* remote_shell;
 	char* bind_address;
 	struct remote* remotes;
+	struct link* topology;
 	struct hotkey* hotkeys;
 
 	struct focus_hint focus_hint;

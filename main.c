@@ -350,6 +350,68 @@ static void resolve_noderef(struct noderef* n)
 	}
 }
 
+static struct noderef* noderef_neighbors(struct noderef* n)
+{
+	if (n->type == NT_MASTER)
+		return config->master.neighbors;
+	else if (n->type == NT_REMOTE)
+		return n->node->neighbors;
+	else
+		abort();
+}
+
+static const char* noderef_name(const struct noderef* n)
+{
+	switch (n->type) {
+	case NT_MASTER: return "master";
+	case NT_REMOTE: return n->node->alias;
+	case NT_REMOTE_TMPNAME: return n->name;
+	default:
+		elog("bad node type in noderef_name()\n");
+		abort();
+	}
+}
+
+static const char* dirnames[] = {
+	[LEFT] = "left",
+	[RIGHT] = "right",
+	[UP] = "up",
+	[DOWN] = "down",
+};
+
+static void set_neighbor(struct noderef* from, direction_t dir, struct noderef* to)
+{
+	struct noderef* neighbors = noderef_neighbors(from);
+
+	assert(dir != NO_DIR);
+
+	if (neighbors[dir].type != NT_NONE)
+		elog("Warning: %s %s neighbor already specified\n", noderef_name(from),
+		     dirnames[dir]);
+
+	neighbors[dir] = *to;
+}
+
+static void apply_link(struct link* ln)
+{
+	resolve_noderef(&ln->a.node);
+	resolve_noderef(&ln->b.node);
+
+	assert(ln->a.dir != NO_DIR);
+	set_neighbor(&ln->a.node, ln->a.dir, &ln->b.node);
+
+	if (ln->b.dir != NO_DIR)
+		set_neighbor(&ln->b.node, ln->b.dir, &ln->a.node);
+}
+
+static void apply_topology(void)
+{
+	struct link* ln;
+
+	for (ln = config->topology; ln; ln = ln->next)
+		apply_link(ln);
+}
+
 static void mark_reachable(struct noderef* n)
 {
 	int seen;
@@ -1183,6 +1245,7 @@ int main(int argc, char** argv)
 	fclose(cfgfile);
 	config = &cfg;
 
+	apply_topology();
 	check_remotes();
 	bind_hotkeys();
 

@@ -30,6 +30,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	struct focus_hint focushint;
 	struct mouse_switch mouseswitch;
 	struct focus_target focus_target;
+	struct link link;
 	struct {
 		float duration;
 		int numsteps;
@@ -79,7 +80,7 @@ static struct remote* new_uninit_remote(void)
 %token <str> STRING
 %token <dir> DIRECTION
 
-%token KW_MASTER KW_REMOTE
+%token KW_MASTER KW_REMOTE KW_TOPOLOGY
 
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_FOCUS KW_RECONNECT
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
@@ -96,6 +97,8 @@ static struct remote* new_uninit_remote(void)
 %type <mouseswitch> mouseswitch
 %type <dim_fade> dim_fade
 %type <focus_target> focus_target
+%type <link> link
+%type <dir> opt_direction
 
 %type <i> port_setting fade_steps show_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -127,6 +130,8 @@ blocks: EMPTY
 };
 
 block: master_block {
+}
+| topology_block {
 }
 | remote_block {
 };
@@ -250,9 +255,6 @@ master_opt: remoteshell_setting {
 	hk->action = $6;
 	hk->next = st->cfg->hotkeys;
 	st->cfg->hotkeys = hk;
-}
-| DIRECTION EQ node {
-	st->cfg->master.neighbors[$1] = $3;
 };
 
 focus_target: DIRECTION {
@@ -273,6 +275,28 @@ action: KW_FOCUS focus_target {
 }
 | KW_QUIT {
 	$$.type = AT_QUIT;
+};
+
+topology_block: KW_TOPOLOGY LBRACE links RBRACE {
+};
+
+links: EMPTY {
+}
+| links link {
+	struct link* ln = xmalloc(sizeof(*ln));
+	*ln = $2;
+	ln->next = st->cfg->topology;
+	st->cfg->topology = ln;
+};
+
+opt_direction: EMPTY { $$ = NO_DIR; }
+| DIRECTION { $$ = $1; };
+
+link: node DIRECTION EQ node opt_direction {
+	$$.a.node = $1;
+	$$.a.dir = $2;
+	$$.b.node = $4;
+	$$.b.dir = $5;
 };
 
 node: STRING {
@@ -329,9 +353,6 @@ remote_opt: KW_HOSTNAME EQ STRING {
 	kvmap_put(st->nextrmt->params, $3, $6);
 	xfree($3);
 	xfree($6);
-}
-| DIRECTION EQ node {
-	st->nextrmt->neighbors[$1] = $3;
 };
 
 %%
