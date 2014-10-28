@@ -35,8 +35,6 @@
 
 static mach_timebase_info_data_t mach_timebase;
 
-static CGDirectDisplayID display;
-
 static PasteboardRef clipboard;
 
 static struct rectangle screenbounds;
@@ -60,6 +58,15 @@ struct gamma_table {
 	uint32_t numents;
 };
 
+struct displayinfo {
+	CGDirectDisplayID id;
+	struct gamma_table orig_gamma;
+	struct gamma_table alt_gamma;
+};
+
+struct displayinfo* displays;
+static uint32_t num_displays;
+
 static void setup_gamma_table(struct gamma_table* gt, uint32_t size)
 {
 	gt->numents = size;
@@ -76,18 +83,44 @@ static void clear_gamma_table(struct gamma_table* gt)
 	memset(gt, 0, sizeof(*gt));
 }
 
-static struct gamma_table orig_gamma, alt_gamma;
+static void init_display(struct displayinfo* d, CGDirectDisplayID id)
+{
+	uint32_t numents;
+	CGError cgerr;
+
+	d->id = id;
+	setup_gamma_table(&d->orig_gamma, CGDisplayGammaTableCapacity(d->id));
+	setup_gamma_table(&d->alt_gamma, d->orig_gamma.numents);
+
+	cgerr = CGGetDisplayTransferByTable(d->id, d->orig_gamma.numents, d->orig_gamma.red,
+	                                    d->orig_gamma.green, d->orig_gamma.blue, &numents);
+	if (cgerr) {
+		elog("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
+		elog("brightness adjustment will disabled\n", cgerr);
+		clear_gamma_table(&d->orig_gamma);
+		clear_gamma_table(&d->alt_gamma);
+	} else if (numents != d->orig_gamma.numents) {
+		elog("CGGetDisplayTransferByTable() behaves strangely: %u != %u\n",
+		     numents, d->orig_gamma.numents);
+		assert(numents < d->orig_gamma.numents);
+		d->orig_gamma.numents = numents;
+		d->alt_gamma.numents = numents;
+	}
+}
+
+/* "128 displays oughta be enough for anyone..." */
+#define MAX_DISPLAYS 128
 
 int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 {
+	CGDirectDisplayID displayids[MAX_DISPLAYS];
 	CGError cgerr;
 	OSStatus status;
-	CGDirectDisplayID active_displays[16];
+	CGDirectDisplayID maindisplay;
 	CGRect bounds;
-	uint32_t num_active_displays;
+	uint32_t i;
 	kern_return_t kr;
 	NXEventHandle nxevh;
-	uint32_t numgaments;
 
 	kr = mach_timebase_info(&mach_timebase);
 	if (kr != KERN_SUCCESS) {
@@ -99,21 +132,24 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 	double_click_threshold_us = NXClickTime(nxevh) * 1000000;
 	NXCloseEventStatus(nxevh);
 
-	cgerr = CGGetActiveDisplayList(ARR_LEN(active_displays), active_displays,
-	                               &num_active_displays);
+	cgerr = CGGetOnlineDisplayList(ARR_LEN(displayids), displayids,
+	                               &num_displays);
 	if (cgerr) {
-		elog("CGGetActiveDisplayList() failed (%d)\n", cgerr);
+		elog("CGGetOnlineDisplayList() failed (%d)\n", cgerr);
 		return -1;
 	}
 
-	if (num_active_displays != 1) {
-		elog("Support for num_displays != 1 NYI (have %u)\n", num_active_displays);
-		return -1;
-	}
+	displays = xmalloc(num_displays * sizeof(*displays));
 
-	display = active_displays[0];
+	/* Initialize to "normal" gamma */
+	CGDisplayRestoreColorSyncSettings();
 
-	bounds = CGDisplayBounds(display);
+	for (i = 0; i < num_displays; i++)
+		init_display(&displays[i], displayids[i]);
+
+	maindisplay = CGMainDisplayID();
+
+	bounds = CGDisplayBounds(maindisplay);
 	screenbounds.x.min = CGRectGetMinX(bounds);
 	screenbounds.x.max = CGRectGetMaxX(bounds) - 1;
 	screenbounds.y.min = CGRectGetMinY(bounds);
@@ -128,39 +164,24 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 		return -1;
 	}
 
-	/* Initialize to "normal" gamma */
-	CGDisplayRestoreColorSyncSettings();
-
-	setup_gamma_table(&orig_gamma, CGDisplayGammaTableCapacity(display));
-	setup_gamma_table(&alt_gamma, orig_gamma.numents);
-
-	cgerr = CGGetDisplayTransferByTable(display, orig_gamma.numents, orig_gamma.red,
-	                                    orig_gamma.green, orig_gamma.blue, &numgaments);
-	if (cgerr) {
-		elog("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
-		elog("brightness adjustment will disabled\n", cgerr);
-		clear_gamma_table(&orig_gamma);
-		clear_gamma_table(&alt_gamma);
-	} else if (numgaments != orig_gamma.numents) {
-		elog("CGGetDisplayTransferByTable() behaves strangely: %u != %u\n",
-		     numgaments, orig_gamma.numents);
-		assert(numgaments < orig_gamma.numents);
-		orig_gamma.numents = numgaments;
-		alt_gamma.numents = numgaments;
-	}
-
 	mouse_edge_handler = edge_handler;
 
 	*fd = -1;
+
 	return 0;
 }
 
 void platform_exit(void)
 {
+	uint32_t i;
+
 	CFRelease(clipboard);
 	CGDisplayRestoreColorSyncSettings();
-	clear_gamma_table(&orig_gamma);
-	clear_gamma_table(&alt_gamma);
+
+	for (i = 0; i < num_displays; i++) {
+		clear_gamma_table(&displays[i].orig_gamma);
+		clear_gamma_table(&displays[i].alt_gamma);
+	}
 }
 
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
@@ -223,8 +244,12 @@ static void scale_gamma_table(const struct gamma_table* from, struct gamma_table
 
 void set_display_brightness(float f)
 {
-	scale_gamma_table(&orig_gamma, &alt_gamma, f);
-	set_gamma_table(display, &alt_gamma);
+	uint32_t i;
+
+	for (i = 0; i < num_displays; i++) {
+		scale_gamma_table(&displays[i].orig_gamma, &displays[i].alt_gamma, f);
+		set_gamma_table(displays[i].id, &displays[i].alt_gamma);
+	}
 }
 
 static inline uint32_t cgfloat_to_u32(CGFloat f)
