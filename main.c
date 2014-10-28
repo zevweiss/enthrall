@@ -763,7 +763,7 @@ static void bind_hotkeys(void)
 		if (k->action.type == AT_SWITCHTO)
 			resolve_noderef(&k->action.node);
 		if (bind_hotkey(k->key_string, action_cb, &k->action))
-			elog("Failed to bind hotkey %s\n", k->key_string);
+			exit(1);
 	}
 }
 

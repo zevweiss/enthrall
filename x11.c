@@ -119,13 +119,26 @@ static unsigned int get_mod_mask(KeySym modsym)
 	return modmask;
 }
 
-static void grab_key(KeyCode kc, unsigned int orig_mask)
+static int keygrab_err;
+
+static int xerr_keygrab(Display* d, XErrorEvent* xev)
+{
+	if (!keygrab_err)
+		keygrab_err = xev->error_code;
+	return 0;
+}
+
+static int set_keygrab(KeyCode kc, unsigned int orig_mask, int grab)
 {
 	int ni, si, ci;
+	int (*prev_errhandler)(Display*, XErrorEvent*);
 	unsigned int modmask;
 	unsigned int nlk_mask = get_mod_mask(XK_Num_Lock);
 	unsigned int slk_mask = get_mod_mask(XK_Scroll_Lock);
 	unsigned int clk_mask = LockMask;
+
+	keygrab_err = 0;
+	prev_errhandler = XSetErrorHandler(xerr_keygrab);
 
 	/* Grab with all combinations of NumLock, ScrollLock and CapsLock */
 	for (ni = 0; ni < (nlk_mask ? 2 : 1); ni++) {
@@ -134,13 +147,33 @@ static void grab_key(KeyCode kc, unsigned int orig_mask)
 				modmask = (ci ? clk_mask : 0)
 					| (si ? slk_mask : 0)
 					| (ni ? nlk_mask : 0);
-				XGrabKey(xdisp, kc, modmask | orig_mask, xrootwin,
-				         True, GrabModeAsync, GrabModeAsync);
+				if (grab)
+					XGrabKey(xdisp, kc, modmask|orig_mask, xrootwin,
+					         True, GrabModeAsync, GrabModeAsync);
+				else
+					XUngrabKey(xdisp, kc, modmask|orig_mask,
+					           xrootwin);
+
+				if (keygrab_err)
+					goto out;
 			}
 		}
 	}
 
+out:
+	XSetErrorHandler(prev_errhandler);
+
 	XFlush(xdisp);
+
+	return keygrab_err;
+}
+
+static int grab_key(KeyCode kc, unsigned int modmask)
+{
+	int status = set_keygrab(kc, modmask, 1);
+	if (status)
+		set_keygrab(kc, modmask, 0);
+	return status;
 }
 
 static inline int match_hotkey(const struct xhotkey* hk, const XKeyEvent* kev)
@@ -302,6 +335,7 @@ out:
 
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 {
+	int status;
 	struct xhotkey* k;
 	KeyCode kc;
 	unsigned int modmask;
@@ -318,7 +352,7 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	kev.state = modmask;
 
 	if (find_hotkey(&kev)) {
-		elog("hotkey '%s' conflicts with an existing hotkey binding\n", keystr);
+		elog("hotkey '%s' conflicts with an earlier hotkey binding\n", keystr);
 		return -1;
 	}
 
@@ -331,9 +365,27 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 
 	xhotkeys = k;
 
-	grab_key(kc, modmask);
+	status = grab_key(kc, modmask);
 
-	return 0;
+	switch (status) {
+	case 0:
+		break;
+
+	case BadAccess:
+		elog("Failed to bind hotkey \"%s\" (already bound by another process?)\n",
+		     keystr);
+		break;
+
+	case BadValue:
+		elog("Invalid hotkey \"%s\" (?)\n", keystr);
+		break;
+
+	default:
+		elog("Failed to bind hotkey \"%s\" for mysterious reasons...\n", keystr);
+		break;
+	}
+
+	return status ? -1 : 0;
 }
 
 static void xrr_init(void)
