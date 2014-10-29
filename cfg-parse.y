@@ -305,16 +305,16 @@ node: STRING {
 }
 | KW_MASTER {
 	$$.type = NT_MASTER;
-	$$.node = NULL;
+	$$.remote = NULL;
 };
 
 remote_block: KW_REMOTE STRING remote_opts {
 	struct remote* rmt = st->nextrmt;
 
-	rmt->alias = $2;
+	rmt->node.name = $2;
 	rmt->next = st->cfg->remotes;
 	if (!rmt->hostname)
-		rmt->hostname = rmt->alias;
+		rmt->hostname = xstrdup(rmt->node.name);
 
 	st->cfg->remotes = rmt;
 	st->nextrmt = new_uninit_remote();

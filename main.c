@@ -147,12 +147,13 @@ static void fail_remote(struct remote* rmt, const char* reason)
 {
 	uint64_t tmp, lshift;
 
-	elog("disconnecting remote '%s': %s\n", rmt->alias, reason);
+	elog("disconnecting remote '%s': %s\n", rmt->node.name, reason);
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
 
 	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
-		elog("remote '%s' exceeds failure limits, permfailing.\n", rmt->alias);
+		elog("remote '%s' exceeds failure limits, permfailing.\n",
+		     rmt->node.name);
 		rmt->state = CS_PERMFAILED;
 		return;
 	}
@@ -320,7 +321,7 @@ static struct remote* find_remote(const char* name)
 
 	/* First search by alias */
 	for_each_remote (rmt) {
-		if (!strcmp(name, rmt->alias))
+		if (!strcmp(name, rmt->node.name))
 			return rmt;
 	}
 
@@ -345,7 +346,7 @@ static void resolve_noderef(struct noderef* n)
 			exit(1);
 		}
 		n->type = NT_REMOTE;
-		n->node = rmt;
+		n->remote = rmt;
 		xfree(name);
 	}
 }
@@ -355,7 +356,7 @@ static struct noderef* noderef_neighbors(struct noderef* n)
 	if (n->type == NT_MASTER)
 		return config->master.neighbors;
 	else if (n->type == NT_REMOTE)
-		return n->node->neighbors;
+		return n->remote->node.neighbors;
 	else
 		abort();
 }
@@ -364,7 +365,7 @@ static const char* noderef_name(const struct noderef* n)
 {
 	switch (n->type) {
 	case NT_MASTER: return "master";
-	case NT_REMOTE: return n->node->alias;
+	case NT_REMOTE: return n->remote->node.name;
 	case NT_REMOTE_TMPNAME: return n->name;
 	default:
 		elog("bad node type in noderef_name()\n");
@@ -423,7 +424,7 @@ static void mark_reachable(struct noderef* n)
 		resolve_noderef(n);
 		/* fallthrough */
 	case NT_REMOTE:
-		rmt = n->node;
+		rmt = n->remote;
 		break;
 	default:
 		return;
@@ -435,7 +436,7 @@ static void mark_reachable(struct noderef* n)
 
 	if (!seen) {
 		for_each_direction (dir)
-			mark_reachable(&rmt->neighbors[dir]);
+			mark_reachable(&rmt->node.neighbors[dir]);
 	}
 }
 
@@ -450,16 +451,16 @@ static void check_remotes(void)
 
 	for_each_remote (rmt) {
 		if (!rmt->reachable)
-			elog("Warning: remote '%s' is not reachable\n", rmt->alias);
+			elog("Warning: remote '%s' is not reachable\n", rmt->node.name);
 
 		num_neighbors = 0;
 		for_each_direction (dir) {
-			if (rmt->neighbors[dir].type != NT_NONE)
+			if (rmt->node.neighbors[dir].type != NT_NONE)
 				num_neighbors += 1;
 		}
 
 		if (!num_neighbors)
-			elog("Warning: remote '%s' has no neighbors\n", rmt->alias);
+			elog("Warning: remote '%s' has no neighbors\n", rmt->node.name);
 	}
 }
 
@@ -665,10 +666,10 @@ static int focus_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
 		break;
 
 	case NT_REMOTE:
-		switch_to = n->node;
+		switch_to = n->remote;
 		if (switch_to->state != CS_CONNECTED) {
 			elog("remote '%s' not connected, can't focus\n",
-			     switch_to->alias);
+			     switch_to->node.name);
 			return 0;
 		}
 		break;
@@ -711,7 +712,7 @@ static int focus_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
 
 static void focus_master(void)
 {
-	struct noderef m = { .type = NT_MASTER, .node = NULL, };
+	struct noderef m = { .type = NT_MASTER, .remote = NULL, };
 	keycode_t* modkeys = get_current_modifiers();
 
 	focus_node(&m, modkeys, 0);
@@ -721,7 +722,7 @@ static void focus_master(void)
 
 static int focus_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
 {
-	struct noderef* n = &(focused_remote ? focused_remote->neighbors
+	struct noderef* n = &(focused_remote ? focused_remote->node.neighbors
 	                      : config->master.neighbors)[dir];
 	return focus_node(n, modkeys, from_hotkey);
 }
@@ -738,8 +739,7 @@ static void clear_ssh_config(struct ssh_config* c)
 
 static void free_remote(struct remote* rmt)
 {
-	if (rmt->alias != rmt->hostname)
-		xfree(rmt->alias);
+	xfree(rmt->node.name);
 	xfree(rmt->hostname);
 	destroy_kvmap(rmt->params);
 	clear_ssh_config(&rmt->sshcfg);
@@ -973,7 +973,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		}
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
-		elog("remote '%s' becomes ready...\n", rmt->alias);
+		elog("remote '%s' becomes ready...\n", rmt->node.name);
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(rmt, 1.0, config->focus_hint.brightness,
 			                      config->focus_hint.duration,
@@ -983,7 +983,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	case MT_SETCLIPBOARD:
 		if (rmt->state != CS_CONNECTED) {
 			elog("got unexpected SETCLIPBOARD from non-connected "
-			     "remote '%s', ignoring.\n", rmt->alias);
+			     "remote '%s', ignoring.\n", rmt->node.name);
 			break;
 		}
 		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
@@ -998,7 +998,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	case MT_LOGMSG:
 		loglen = msg->extra.len > INT_MAX ? INT_MAX : msg->extra.len;
 		logmsg = msg->extra.buf;
-		elog("%s: %.*s%s", rmt->alias, loglen, logmsg,
+		elog("%s: %.*s%s", rmt->node.name, loglen, logmsg,
 		     logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
 		break;
 
@@ -1007,7 +1007,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		    || (msg->edgemaskchange.new & ~ALLDIRS_MASK))
 			fail_remote(rmt, "invalid edge mask");
 		else
-			check_edgeevents(rmt->edgehist, rmt->alias,
+			check_edgeevents(rmt->node.edgehist, rmt->node.name,
 			                 msg->edgemaskchange.old, msg->edgemaskchange.new,
 			                 msg->edgemaskchange.xpos, msg->edgemaskchange.ypos);
 		break;
@@ -1240,6 +1240,7 @@ int main(int argc, char** argv)
 	}
 
 	memset(&cfg, 0, sizeof(cfg));
+	cfg.master.name = "<master>";
 	if (parse_cfg(cfgfile, &cfg))
 		exit(1);
 	fclose(cfgfile);

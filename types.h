@@ -78,7 +78,7 @@ struct noderef {
 	} type;
 	union {
 		char* name;
-		struct remote* node;
+		struct remote* remote;
 	};
 };
 
@@ -114,8 +114,24 @@ struct edge_state {
 #include "proto.h"
 #include "kvmap.h"
 
+struct nodeinfo {
+	char* name;
+
+	/* Bounds of the node's effective logical screen */
+	struct rectangle dimensions;
+
+	/* Neighboring node in each direction */
+	struct noderef neighbors[NUM_DIRECTIONS];
+
+	/* History of mouse arrivals/departures at each screen edge */
+	struct edge_state edgehist[NUM_DIRECTIONS];
+
+	/* Bitmask of which screen edges the mouse pointer is currently at */
+	dirmask_t edgemask;
+};
+
 struct remote {
-	char* alias;
+	struct nodeinfo node;
 
 	/* Used for graph topology check */
 	int reachable;
@@ -125,12 +141,6 @@ struct remote {
 	struct ssh_config sshcfg;
 
 	struct kvmap* params;
-
-	/* neighbors */
-	struct noderef neighbors[NUM_DIRECTIONS];
-
-	/* History of mouse arrivals/departures at each screen edge */
-	struct edge_state edgehist[NUM_DIRECTIONS];
 
 	/* connection state */
 	connstate_t state;
@@ -215,11 +225,6 @@ struct link {
 	struct link* next;
 };
 
-struct master {
-	struct noderef neighbors[NUM_DIRECTIONS];
-	struct edge_state edgehist[NUM_DIRECTIONS];
-};
-
 struct config {
 	char* remote_shell;
 	char* bind_address;
@@ -239,7 +244,7 @@ struct config {
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;
 
-	struct master master;
+	struct nodeinfo master;
 };
 
 #endif /* COMMONDEFS_H */
