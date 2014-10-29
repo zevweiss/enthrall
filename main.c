@@ -707,6 +707,7 @@ static void shutdown_master(void)
 	struct remote* rmt;
 	struct scheduled_call* sc;
 	struct hotkey* hk;
+	struct link* ln;
 
 	while (config->remotes) {
 		rmt = config->remotes;
@@ -728,7 +729,14 @@ static void shutdown_master(void)
 		xfree(hk);
 	}
 
+	while (config->topology) {
+		ln = config->topology;
+		config->topology = ln->next;
+		xfree(ln);
+	}
+
 	clear_ssh_config(&config->ssh_defaults);
+	xfree(config->master.name);
 
 	platform_exit();
 }
