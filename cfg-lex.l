@@ -51,6 +51,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 "mouse-switch"	return KW_MOUSESWITCH;
 "multi-tap"	return KW_MULTITAP;
+"slide"		return KW_SLIDE;
 
 "show-null-switch"	return KW_SHOWNULLSWITCH;
 "hotkey-only"		return KW_HOTKEYONLY;

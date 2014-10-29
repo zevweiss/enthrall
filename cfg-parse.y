@@ -83,7 +83,7 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_MASTER KW_REMOTE KW_TOPOLOGY
 
-%token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_FOCUS KW_RECONNECT
+%token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_FOCUS KW_RECONNECT KW_SLIDE
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
 %token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
 
@@ -219,6 +219,12 @@ mouseswitch: KW_MULTITAP INTEGER realnum {
 
 	if ($3 < 0.0)
 		fail_parse(st, "multi-tap time window must be >= 0");
+}
+| KW_SLIDE {
+	/* 'slide' is just shorthand for 'multi-tap 1 ...' */
+	$$.type = MS_MULTITAP;
+	$$.num = 1;
+	$$.window = 0;
 }
 | KW_NONE {
 	$$.type = MS_NONE;

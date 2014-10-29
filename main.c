@@ -890,7 +890,7 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 		start_idx = (config->mouseswitch.num - 1) * 2;
 
 		duration = now_us - get_edgehist_entry(ehist, start_idx);
-		if (duration < config->mouseswitch.window) {
+		if (duration <= config->mouseswitch.window) {
 			modkeys = get_current_modifiers();
 			if (focus_neighbor(dir, modkeys, 0))
 				edgeswitch_reposition(dir, src_xpos, src_ypos);
