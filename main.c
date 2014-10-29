@@ -1113,7 +1113,7 @@ static void handle_fds(int platform_event_fd)
 	fdset_add(platform_event_fd, &rfds, &nfds);
 
 	status = select(nfds, &rfds, &wfds, NULL, get_select_timeout(&sel_wait, now_us));
-	if (status < 0) {
+	if (status < 0 && errno != EINTR) {
 		perror("select");
 		exit(1);
 	}

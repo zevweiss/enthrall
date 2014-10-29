@@ -80,7 +80,7 @@ static void handle_fds(int platform_event_fd)
 		fdset_add(platform_event_fd, &rfds, &nfds);
 
 	status = select(nfds, &rfds, &wfds, NULL, NULL);
-	if (status < 0) {
+	if (status < 0 && errno != EINTR) {
 		elog("select() failed: %s\n", strerror(errno));
 		exit(1);
 	}
