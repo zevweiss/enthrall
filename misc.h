@@ -102,7 +102,17 @@ typedef enum {
 
 extern opmode_t opmode;
 
-extern struct remote* focused_remote;
+extern struct node* focused_node;
+
+static inline int is_remote(struct node* n)
+{
+	return !!n->remote;
+}
+
+static inline int is_master(struct node* n)
+{
+	return !n->remote;
+}
 
 void run_remote(void);
 extern struct kvmap* remote_params;

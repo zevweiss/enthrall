@@ -915,14 +915,14 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 		return;
 	}
 
-	if (!focused_remote) {
+	if (!is_remote(focused_node)) {
 		elog("keyevent (%s %s, modmask=%#x) with no focused remote\n",
 		     XKeysymToString(sym), pr == PR_PRESS ? "pressed" : "released",
 		     kev->state);
 		return;
 	}
 
-	send_keyevent(focused_remote, kc, pr);
+	send_keyevent(focused_node->remote, kc, pr);
 }
 
 static void handle_grabbed_mousemov(XMotionEvent* mev)
@@ -931,7 +931,7 @@ static void handle_grabbed_mousemov(XMotionEvent* mev)
 	    && mev->y_root == screen_center.y)
 		return;
 
-	send_moverel(focused_remote, mev->x_root - last_seen_mousepos.x,
+	send_moverel(focused_node->remote, mev->x_root - last_seen_mousepos.x,
 	             mev->y_root - last_seen_mousepos.y);
 
 	if (abs(mev->x_root - screen_center.x) > 1
@@ -955,7 +955,7 @@ static void handle_event(XEvent* ev)
 
 	switch (ev->type) {
 	case MotionNotify:
-		if (focused_remote)
+		if (focused_node->remote)
 			handle_grabbed_mousemov(&ev->xmotion);
 		else
 			handle_local_mousemove(&ev->xmotion);
@@ -977,13 +977,21 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case ButtonPress:
-		send_clickevent(focused_remote, LOOKUP(ev->xbutton.button, pi_mousebuttons),
-		                PR_PRESS);
+		if (!is_remote(focused_node))
+			elog("ButtonPress with no focused remote\n");
+		else
+			send_clickevent(focused_node->remote,
+			                LOOKUP(ev->xbutton.button, pi_mousebuttons),
+			                PR_PRESS);
 		break;
 
 	case ButtonRelease:
-		send_clickevent(focused_remote, LOOKUP(ev->xbutton.button, pi_mousebuttons),
-		                PR_RELEASE);
+		if (!is_remote(focused_node))
+			elog("ButtonRelease with no focused remote\n");
+		else
+			send_clickevent(focused_node->remote,
+			                LOOKUP(ev->xbutton.button, pi_mousebuttons),
+			                PR_RELEASE);
 		break;
 
 	case SelectionRequest:

@@ -62,6 +62,7 @@ static struct remote* new_uninit_remote(void)
 	rmt->msgchan.send_fd = rmt->msgchan.recv_fd = -1;
 	rmt->state = CS_NEW;
 	rmt->params = new_kvmap();
+	rmt->node.remote = rmt;
 
 	return rmt;
 }
@@ -263,7 +264,7 @@ focus_target: DIRECTION {
 }
 | node {
 	$$.type = FT_NODE;
-	$$.node = $1;
+	$$.nr = $1;
 };
 
 action: KW_FOCUS focus_target {
@@ -293,19 +294,20 @@ opt_direction: EMPTY { $$ = NO_DIR; }
 | DIRECTION { $$ = $1; };
 
 link: node DIRECTION EQ node opt_direction {
-	$$.a.node = $1;
+	$$.a.nr = $1;
 	$$.a.dir = $2;
-	$$.b.node = $4;
+	$$.b.nr = $4;
 	$$.b.dir = $5;
 };
 
 node: STRING {
-	$$.type = NT_REMOTE_TMPNAME;
+	$$.type = NT_TMPNAME;
 	$$.name = $1;
 }
 | KW_MASTER {
-	$$.type = NT_MASTER;
-	$$.remote = NULL;
+	/* TODO: allow giving master an alias and using it */
+	$$.type = NT_TMPNAME;
+	$$.name = NULL;
 };
 
 remote_block: KW_REMOTE STRING remote_opts {

@@ -21,7 +21,7 @@
 
 #include "cfg-parse.tab.h"
 
-struct remote* focused_remote = NULL;
+struct node* focused_node;
 opmode_t opmode;
 
 static char* progname;
@@ -135,7 +135,7 @@ static void disconnect_remote(struct remote* rmt)
 
 	rmt->sshpid = -1;
 
-	if (rmt == focused_remote)
+	if (rmt == focused_node->remote)
 		focus_master();
 }
 
@@ -315,20 +315,23 @@ static void setup_remote(struct remote* rmt)
 	enqueue_message(rmt, setupmsg);
 }
 
-static struct remote* find_remote(const char* name)
+static struct node* find_node(const char* name)
 {
 	struct remote* rmt;
+
+	if (!name)
+		return &config->master;
 
 	/* First search by alias */
 	for_each_remote (rmt) {
 		if (!strcmp(name, rmt->node.name))
-			return rmt;
+			return &rmt->node;
 	}
 
 	/* if that fails, try hostnames */
 	for_each_remote (rmt) {
 		if (!strcmp(name, rmt->hostname))
-			return rmt;
+			return &rmt->node;
 	}
 
 	return NULL;
@@ -337,39 +340,18 @@ static struct remote* find_remote(const char* name)
 static void resolve_noderef(struct noderef* n)
 {
 	char* name;
-	struct remote* rmt;
-	if (n->type == NT_REMOTE_TMPNAME) {
+	struct node* node;
+
+	if (n->type == NT_TMPNAME) {
 		name = n->name;
-		rmt = find_remote(name);
-		if (!rmt) {
+		node = find_node(name);
+		if (!node) {
 			elog("No such remote: '%s'\n", n->name);
 			exit(1);
 		}
-		n->type = NT_REMOTE;
-		n->remote = rmt;
+		n->type = NT_NODE;
+		n->node = node;
 		xfree(name);
-	}
-}
-
-static struct noderef* noderef_neighbors(struct noderef* n)
-{
-	if (n->type == NT_MASTER)
-		return config->master.neighbors;
-	else if (n->type == NT_REMOTE)
-		return n->remote->node.neighbors;
-	else
-		abort();
-}
-
-static const char* noderef_name(const struct noderef* n)
-{
-	switch (n->type) {
-	case NT_MASTER: return "master";
-	case NT_REMOTE: return n->remote->node.name;
-	case NT_REMOTE_TMPNAME: return n->name;
-	default:
-		elog("bad node type in noderef_name()\n");
-		abort();
 	}
 }
 
@@ -380,29 +362,23 @@ static const char* dirnames[] = {
 	[DOWN] = "down",
 };
 
-static void set_neighbor(struct noderef* from, direction_t dir, struct noderef* to)
-{
-	struct noderef* neighbors = noderef_neighbors(from);
-
-	assert(dir != NO_DIR);
-
-	if (neighbors[dir].type != NT_NONE)
-		elog("Warning: %s %s neighbor already specified\n", noderef_name(from),
-		     dirnames[dir]);
-
-	neighbors[dir] = *to;
-}
-
 static void apply_link(struct link* ln)
 {
-	resolve_noderef(&ln->a.node);
-	resolve_noderef(&ln->b.node);
+	resolve_noderef(&ln->a.nr);
+	resolve_noderef(&ln->b.nr);
 
 	assert(ln->a.dir != NO_DIR);
-	set_neighbor(&ln->a.node, ln->a.dir, &ln->b.node);
+	if (ln->a.nr.node->neighbors[ln->a.dir])
+		elog("Warning: %s %s neighbor already specified\n",
+		     ln->a.nr.node->name, dirnames[ln->a.dir]);
+	ln->a.nr.node->neighbors[ln->a.dir] = ln->b.nr.node;
 
-	if (ln->b.dir != NO_DIR)
-		set_neighbor(&ln->b.node, ln->b.dir, &ln->a.node);
+	if (ln->b.dir != NO_DIR) {
+		if (ln->b.nr.node->neighbors[ln->b.dir])
+			elog("Warning: %s %s neighbor already specified\n",
+			     ln->b.nr.node->name, dirnames[ln->b.dir]);
+		ln->b.nr.node->neighbors[ln->b.dir] = ln->a.nr.node;
+	}
 }
 
 static void apply_topology(void)
@@ -413,30 +389,20 @@ static void apply_topology(void)
 		apply_link(ln);
 }
 
-static void mark_reachable(struct noderef* n)
+static void mark_reachable(struct node* n)
 {
 	int seen;
 	direction_t dir;
-	struct remote* rmt;
 
-	switch (n->type) {
-	case NT_REMOTE_TMPNAME:
-		resolve_noderef(n);
-		/* fallthrough */
-	case NT_REMOTE:
-		rmt = n->remote;
-		break;
-	default:
+	if (!n || is_master(n))
 		return;
-	}
 
-	seen = rmt->reachable;
-
-	rmt->reachable = 1;
+	seen = n->remote->reachable;
+	n->remote->reachable = 1;
 
 	if (!seen) {
 		for_each_direction (dir)
-			mark_reachable(&rmt->node.neighbors[dir]);
+			mark_reachable(n->neighbors[dir]);
 	}
 }
 
@@ -447,7 +413,7 @@ static void check_remotes(void)
 	int num_neighbors;
 
 	for_each_direction (dir)
-		mark_reachable(&config->master.neighbors[dir]);
+		mark_reachable(config->master.neighbors[dir]);
 
 	for_each_remote (rmt) {
 		if (!rmt->reachable)
@@ -455,7 +421,7 @@ static void check_remotes(void)
 
 		num_neighbors = 0;
 		for_each_direction (dir) {
-			if (rmt->node.neighbors[dir].type != NT_NONE)
+			if (rmt->node.neighbors[dir])
 				num_neighbors += 1;
 		}
 
@@ -465,47 +431,48 @@ static void check_remotes(void)
 }
 
 
-static void transfer_clipboard(struct remote* from, struct remote* to)
+static void transfer_clipboard(struct node* from, struct node* to)
 {
 	struct message* msg;
 
-	if (!from && !to) {
+	if (is_master(from) && is_master(to)) {
 		elog("switching from master to master??\n");
 		return;
 	}
 
-	if (from) {
+	if (is_remote(from)) {
 		msg = new_message(MT_GETCLIPBOARD);
-		enqueue_message(from, msg);
-	} else if (to) {
+		enqueue_message(from->remote, msg);
+	} else if (is_remote(to)) {
 		msg = new_message(MT_SETCLIPBOARD);
 		msg->extra.buf = get_clipboard_text();
 		msg->extra.len = strlen(msg->extra.buf);
 		assert(msg->extra.len <= UINT32_MAX);
-		enqueue_message(to, msg);
+		enqueue_message(to->remote, msg);
 	}
 }
 
-static void transfer_modifiers(struct remote* from, struct remote* to, const keycode_t* modkeys)
+static void transfer_modifiers(struct node* from, struct node* to,
+                               const keycode_t* modkeys)
 {
 	int i;
 	struct message* msg;
 
-	if (from) {
+	if (is_remote(from)) {
 		for (i = 0; modkeys[i] != ET_null; i++) {
 			msg = new_message(MT_KEYEVENT);
 			msg->keyevent.pressrel = PR_RELEASE;
 			msg->keyevent.keycode = modkeys[i];
-			enqueue_message(from, msg);
+			enqueue_message(from->remote, msg);
 		}
 	}
 
-	if (to) {
+	if (is_remote(to)) {
 		for (i = 0; modkeys[i] != ET_null; i++) {
 			msg = new_message(MT_KEYEVENT);
 			msg->keyevent.pressrel = PR_PRESS;
 			msg->keyevent.keycode = modkeys[i];
-			enqueue_message(to, msg);
+			enqueue_message(to->remote, msg);
 		}
 	}
 }
@@ -569,12 +536,12 @@ void send_setbrightness(struct remote* rmt, float f)
 	enqueue_message(rmt, msg);
 }
 
-static void set_node_display_brightness(struct remote* rmt, float f)
+static void set_node_display_brightness(struct node* node, float f)
 {
-	if (!rmt)
+	if (is_master(node))
 		set_display_brightness(f);
 	else
-		send_setbrightness(rmt, f);
+		send_setbrightness(node->remote, f);
 }
 
 static void set_brightness_cb(void* arg)
@@ -586,15 +553,16 @@ static void set_brightness_cb(void* arg)
 	xfree(fp);
 }
 
-static void schedule_brightness_change(struct remote* rmt, float f, uint64_t when)
+static void schedule_brightness_change(struct node* node, float f, uint64_t when)
 {
 	struct message* msg;
 	float* fp;
-	if (rmt) {
+
+	if (is_remote(node)) {
 		msg = new_message(MT_SETBRIGHTNESS);
 		msg->setbrightness.brightness = f;
 		msg->sendtime = when;
-		schedule_message(rmt, msg);
+		schedule_message(node->remote, msg);
 	} else {
 		fp = xmalloc(sizeof(*fp));
 		*fp = f;
@@ -602,7 +570,7 @@ static void schedule_brightness_change(struct remote* rmt, float f, uint64_t whe
 	}
 }
 
-static void transition_brightness(struct remote* node, float from, float to,
+static void transition_brightness(struct node* node, float from, float to,
                                   uint64_t duration, int steps)
 {
 	int i;
@@ -619,7 +587,7 @@ static void transition_brightness(struct remote* node, float from, float to,
 	schedule_brightness_change(node, to, now_us + duration);
 }
 
-static void indicate_switch(struct remote* from, struct remote* to)
+static void indicate_switch(struct node* from, struct node* to)
 {
 	struct focus_hint* fh = &config->focus_hint;
 
@@ -650,81 +618,68 @@ static struct xypoint saved_master_mousepos;
 
 /*
  * Returns non-zero on a successful "real" switch, or zero if no actual switch
- * was performed (i.e. the switched-to node is the same as the current node).
+ * was performed (i.e. the switched-to node is the same as the current node,
+ * or the remote we tried to switch to is currently disconnected).
  */
-static int focus_node(struct noderef* n, keycode_t* modkeys, int from_hotkey)
+static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 {
-	struct remote* switch_to;
+	struct node* to;
+	struct node* from;
 
-	switch (n->type) {
-	case NT_NONE:
-		switch_to = focused_remote;
-		break;
-
-	case NT_MASTER:
-		switch_to = NULL;
-		break;
-
-	case NT_REMOTE:
-		switch_to = n->remote;
-		if (switch_to->state != CS_CONNECTED) {
-			elog("remote '%s' not connected, can't focus\n",
-			     switch_to->node.name);
-			return 0;
-		}
-		break;
-
-	default:
-		elog("unexpected neighbor type %d\n", n->type);
-		return 0;
+	if (!n) {
+		to = focused_node;
+	} else if (is_remote(n) && n->remote->state != CS_CONNECTED) {
+		elog("Remote %s not connected, can't focus\n", n->name);
+		to = focused_node;
+	} else {
+		to = n;
 	}
+
+	from = focused_node;
 
 	/*
 	 * If configured to do so, give visual indication even if no actual
 	 * switch is performed.
 	 */
-	if (switch_to != focused_remote
+	if (to != from
 	    || config->show_nullswitch == NS_YES
-	    || (config->show_nullswitch == NS_HOTKEYONLY && from_hotkey))
-		indicate_switch(focused_remote, switch_to);
+	    || (config->show_nullswitch == NS_HOTKEYONLY && via_hotkey))
+		indicate_switch(from, to);
 
-	if (switch_to == focused_remote)
+	if (to == from)
 		return 0;
 
-	if (focused_remote && !switch_to) {
+	if (is_remote(from) && is_master(to)) {
 		ungrab_inputs();
 		set_mousepos(saved_master_mousepos);
-	} else if (!focused_remote && switch_to) {
+	} else if (is_master(from) && is_remote(to)) {
 		saved_master_mousepos = get_mousepos();
 		grab_inputs();
 	}
 
-	if (switch_to)
+	if (is_remote(to))
 		set_mousepos(screen_center);
 
-	transfer_clipboard(focused_remote, switch_to);
-	transfer_modifiers(focused_remote, switch_to, modkeys);
+	transfer_clipboard(from, to);
+	transfer_modifiers(from, to, modkeys);
 
-	focused_remote = switch_to;
+	focused_node = to;
 
 	return 1;
 }
 
 static void focus_master(void)
 {
-	struct noderef m = { .type = NT_MASTER, .remote = NULL, };
 	keycode_t* modkeys = get_current_modifiers();
 
-	focus_node(&m, modkeys, 0);
+	focus_node(&config->master, modkeys, 0);
 
 	xfree(modkeys);
 }
 
-static int focus_neighbor(direction_t dir, keycode_t* modkeys, int from_hotkey)
+static int focus_neighbor(direction_t dir, keycode_t* modkeys, int via_hotkey)
 {
-	struct noderef* n = &(focused_remote ? focused_remote->node.neighbors
-	                      : config->master.neighbors)[dir];
-	return focus_node(n, modkeys, from_hotkey);
+	return focus_node(focused_node->neighbors[dir], modkeys, via_hotkey);
 }
 
 static void clear_ssh_config(struct ssh_config* c)
@@ -791,7 +746,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			focus_neighbor(a->target.dir, modkeys, 1);
 			break;
 		case FT_NODE:
-			focus_node(&a->target.node, modkeys, 1);
+			focus_node(a->target.nr.node, modkeys, 1);
 			break;
 		default:
 			elog("bad focus-target type %s\n", a->target.type);
@@ -828,7 +783,7 @@ static void bind_hotkeys(void)
 
 	for (k = config->hotkeys; k; k = k->next) {
 		if (k->action.type == AT_FOCUS && k->action.target.type == FT_NODE)
-			resolve_noderef(&k->action.target.node);
+			resolve_noderef(&k->action.target.nr);
 		if (bind_hotkey(k->key_string, action_cb, &k->action))
 			exit(1);
 	}
@@ -892,11 +847,11 @@ static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 		return;
 	}
 
-	if (focused_remote) {
+	if (focused_node->remote) {
 		msg = new_message(MT_SETMOUSEPOSSCREENREL);
 		msg->setmouseposscreenrel.xpos = x;
 		msg->setmouseposscreenrel.ypos = y;
-		enqueue_message(focused_remote, msg);
+		enqueue_message(focused_node->remote, msg);
 	} else {
 		set_mousepos_screenrel(x, y);
 	}
@@ -975,7 +930,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->node.name);
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
-			transition_brightness(rmt, 1.0, config->focus_hint.brightness,
+			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
 			                      config->focus_hint.duration,
 			                      config->focus_hint.fade_steps);
 		break;
@@ -987,11 +942,11 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 			break;
 		}
 		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
-		if (focused_remote) {
+		if (focused_node->remote) {
 			resp = new_message(MT_SETCLIPBOARD);
 			resp->extra.buf = get_clipboard_text();
 			resp->extra.len = strlen(resp->extra.buf);
-			enqueue_message(focused_remote, resp);
+			enqueue_message(focused_node->remote, resp);
 		}
 		break;
 
@@ -1249,6 +1204,8 @@ int main(int argc, char** argv)
 	apply_topology();
 	check_remotes();
 	bind_hotkeys();
+
+	focused_node = &config->master;
 
 	for_each_remote (rmt)
 		setup_remote(rmt);

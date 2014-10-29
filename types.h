@@ -67,21 +67,6 @@ typedef uint32_t dirmask_t;
 
 #define ALLDIRS_MASK (LEFTMASK|RIGHTMASK|UPMASK|DOWNMASK)
 
-struct noderef {
-	enum {
-		NT_NONE = 0,
-		NT_REMOTE,
-		NT_MASTER,
-
-		/* initial state before a name gets resolved to a remote */
-		NT_REMOTE_TMPNAME,
-	} type;
-	union {
-		char* name;
-		struct remote* remote;
-	};
-};
-
 struct ssh_config {
 	char* remoteshell;
 	int port;
@@ -114,24 +99,27 @@ struct edge_state {
 #include "proto.h"
 #include "kvmap.h"
 
-struct nodeinfo {
+struct node {
 	char* name;
 
 	/* Bounds of the node's effective logical screen */
 	struct rectangle dimensions;
 
 	/* Neighboring node in each direction */
-	struct noderef neighbors[NUM_DIRECTIONS];
+	struct node* neighbors[NUM_DIRECTIONS];
 
 	/* History of mouse arrivals/departures at each screen edge */
 	struct edge_state edgehist[NUM_DIRECTIONS];
 
 	/* Bitmask of which screen edges the mouse pointer is currently at */
 	dirmask_t edgemask;
+
+	/* Pointer to the remote info for this node (NULL for master) */
+	struct remote* remote;
 };
 
 struct remote {
-	struct nodeinfo node;
+	struct node node;
 
 	/* Used for graph topology check */
 	int reachable;
@@ -168,6 +156,19 @@ struct remote {
 	struct remote* next;
 };
 
+struct noderef {
+	enum {
+		/* initial state before a name gets resolved to a node */
+		NT_TMPNAME,
+
+		NT_NODE,
+	} type;
+	union {
+		char* name;
+		struct node* node;
+	};
+};
+
 struct focus_target {
 	enum {
 		FT_DIRECTION,
@@ -175,7 +176,7 @@ struct focus_target {
 	} type;
 	union {
 		direction_t dir;
-		struct noderef node;
+		struct noderef nr;
 	};
 };
 
@@ -218,7 +219,7 @@ struct mouse_switch {
 
 struct link {
 	struct {
-		struct noderef node;
+		struct noderef nr;
 		direction_t dir;
 	} a, b;
 
@@ -244,7 +245,7 @@ struct config {
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;
 
-	struct nodeinfo master;
+	struct node master;
 };
 
 #endif /* COMMONDEFS_H */
