@@ -11,15 +11,20 @@ struct msgchan stdio_msgchan;
 
 struct kvmap* remote_params;
 
+static void shutdown_remote(void)
+{
+	mc_close(&stdio_msgchan);
+	destroy_kvmap(remote_params);
+	platform_exit();
+}
+
 static void handle_message(const struct message* msg)
 {
 	struct message* resp;
 
 	switch (msg->type) {
 	case MT_SHUTDOWN:
-		mc_close(&stdio_msgchan);
-		destroy_kvmap(remote_params);
-		/* FIXME: platform_exit()? */
+		shutdown_remote();
 		exit(0);
 
 	case MT_MOVEREL:
@@ -58,6 +63,7 @@ static void handle_message(const struct message* msg)
 
 	default:
 		elog("unhandled message type: %u\n", msg->type);
+		shutdown_remote();
 		exit(1);
 	}
 }
@@ -100,6 +106,7 @@ static void handle_fds(int platform_event_fd)
 		status = recv_message(&stdio_msgchan, &msg);
 		if (status < 0) {
 			elog("failed to receive valid message\n");
+			shutdown_remote();
 			exit(1);
 		} else if (status > 0) {
 			handle_message(&msg);
@@ -141,6 +148,8 @@ void run_remote(void)
 		elog("failed to unflatted remote-params kvmap\n");
 		exit(1);
 	}
+
+	xfree(setupmsg.extra.buf);
 
 	if (platform_init(&platform_event_fd, NULL) < 0) {
 		elog("platform_init() failed\n");
