@@ -40,7 +40,7 @@ struct scheduled_call {
 
 static struct scheduled_call* scheduled_calls;
 
-void elog(const char* fmt, ...)
+__printf(1, 2) void elog(const char* fmt, ...)
 {
 	va_list va;
 	struct message* msg;
@@ -758,7 +758,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			focus_node(a->target.nr.node, modkeys, 1);
 			break;
 		default:
-			elog("bad focus-target type %s\n", a->target.type);
+			elog("bad focus-target type %u\n", a->target.type);
 			break;
 		}
 		break;

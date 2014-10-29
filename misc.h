@@ -10,6 +10,12 @@
 
 #include "types.h"
 
+#ifdef __GNUC__
+#define __printf(a, b) __attribute__((format(printf, a, b)))
+#else
+#define __printf(a, b)
+#endif
+
 #define ARR_LEN(a) (sizeof(a) / sizeof(a[0]))
 
 #define LOOKUP(key, table) (assert(key < ARR_LEN(table)), \
@@ -93,7 +99,7 @@ static inline void fdset_add(int fd, fd_set* set, int* nfds)
 		*nfds = fd + 1;
 }
 
-void elog(const char* fmt, ...);
+__printf(1, 2) void elog(const char* fmt, ...);
 
 typedef enum {
 	MASTER,
