@@ -100,6 +100,7 @@ static struct remote* new_uninit_remote(void)
 %type <focus_target> focus_target
 %type <link> link
 %type <dir> opt_direction
+%type <str> opt_string
 
 %type <i> port_setting fade_steps show_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -137,7 +138,11 @@ block: master_block {
 | remote_block {
 };
 
-master_block: KW_MASTER LBRACE master_opts RBRACE {
+opt_string: EMPTY { $$ = NULL; }
+| STRING { $$ = $1; };
+
+master_block: KW_MASTER opt_string LBRACE master_opts RBRACE {
+	st->cfg->master.name = $2;
 };
 
 master_opts: EMPTY
@@ -305,7 +310,6 @@ node: STRING {
 	$$.name = $1;
 }
 | KW_MASTER {
-	/* TODO: allow giving master an alias and using it */
 	$$.type = NT_TMPNAME;
 	$$.name = NULL;
 };

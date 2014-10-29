@@ -320,7 +320,7 @@ static struct node* find_node(const char* name)
 {
 	struct remote* rmt;
 
-	if (!name)
+	if (!name || !strcmp(name, config->master.name))
 		return &config->master;
 
 	/* First search by alias */
@@ -1226,7 +1226,8 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 
-	cfg.master.name = "<master>";
+	if (!cfg.master.name)
+		cfg.master.name = xstrdup("<master>");
 	get_screen_dimensions(&cfg.master.dimensions);
 
 	apply_topology();
