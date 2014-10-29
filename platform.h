@@ -18,7 +18,6 @@ uint64_t get_microtime(void);
 
 struct xypoint get_mousepos(void);
 void set_mousepos(struct xypoint pos);
-void set_mousepos_screenrel(float xpos, float ypos);
 void move_mousepos(int32_t dx, int32_t dy);
 
 void do_clickevent(mousebutton_t button, pressrel_t pr);
@@ -47,11 +46,11 @@ void process_events(void);
  */
 extern struct xypoint screen_center;
 
-typedef void (mouse_edge_change_handler_t)(dirmask_t old_edgemask,
-                                           dirmask_t new_edgemask,
-                                           float xpos, float ypos);
+void get_screen_dimensions(struct rectangle* d);
 
-int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler);
+typedef void (mousepos_handler_t)(struct xypoint pt);
+
+int platform_init(int* fd, mousepos_handler_t* edge_handler);
 void platform_exit(void);
 
 #endif /* PLATFORM_H */

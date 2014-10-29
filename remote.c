@@ -19,10 +19,18 @@ static void handle_message(const struct message* msg)
 	case MT_SHUTDOWN:
 		mc_close(&stdio_msgchan);
 		destroy_kvmap(remote_params);
+		/* FIXME: platform_exit()? */
 		exit(0);
 
 	case MT_MOVEREL:
 		move_mousepos(msg->moverel.dx, msg->moverel.dy);
+		resp = new_message(MT_MOUSEPOS);
+		resp->mousepos.pt = get_mousepos();
+		mc_enqueue_message(&stdio_msgchan, resp);
+		break;
+
+	case MT_MOVEABS:
+		set_mousepos(msg->moveabs.pt);
 		break;
 
 	case MT_CLICKEVENT:
@@ -46,11 +54,6 @@ static void handle_message(const struct message* msg)
 
 	case MT_SETBRIGHTNESS:
 		set_display_brightness(msg->setbrightness.brightness);
-		break;
-
-	case MT_SETMOUSEPOSSCREENREL:
-		set_mousepos_screenrel(msg->setmouseposscreenrel.xpos,
-		                       msg->setmouseposscreenrel.ypos);
 		break;
 
 	default:
@@ -106,18 +109,6 @@ static void handle_fds(int platform_event_fd)
 	}
 }
 
-static void send_edgemask_change_cb(dirmask_t old, dirmask_t new, float xpos, float ypos)
-{
-	struct message* msg = new_message(MT_EDGEMASKCHANGE);
-
-	msg->edgemaskchange.old = old;
-	msg->edgemaskchange.new = new;
-	msg->edgemaskchange.xpos = xpos;
-	msg->edgemaskchange.ypos = ypos;
-
-	mc_enqueue_message(&stdio_msgchan, msg);
-}
-
 void run_remote(void)
 {
 	int platform_event_fd;
@@ -151,7 +142,7 @@ void run_remote(void)
 		exit(1);
 	}
 
-	if (platform_init(&platform_event_fd, send_edgemask_change_cb) < 0) {
+	if (platform_init(&platform_event_fd, NULL) < 0) {
 		elog("platform_init() failed\n");
 		exit(1);
 	}
@@ -162,6 +153,7 @@ void run_remote(void)
 	mc_init(&stdio_msgchan, STDOUT_FILENO, STDIN_FILENO);
 
 	readymsg = new_message(MT_READY);
+	get_screen_dimensions(&readymsg->ready.screendim);
 	mc_enqueue_message(&stdio_msgchan, readymsg);
 
 	for (;;)

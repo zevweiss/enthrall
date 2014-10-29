@@ -14,14 +14,14 @@ enum {
 	MT_READY,
 	MT_SHUTDOWN,
 	MT_MOVEREL,
+	MT_MOVEABS,
+	MT_MOUSEPOS,
 	MT_CLICKEVENT,
 	MT_KEYEVENT,
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
 	MT_LOGMSG,
 	MT_SETBRIGHTNESS,
-	MT_EDGEMASKCHANGE,
-	MT_SETMOUSEPOSSCREENREL,
 };
 
 typedef uint32_t msgtype_t;
@@ -32,6 +32,7 @@ struct setup_msg {
 };
 
 struct ready_msg {
+	struct rectangle screendim;
 };
 
 struct shutdown_msg {
@@ -40,6 +41,14 @@ struct shutdown_msg {
 struct moverel_msg {
 	int32_t dx;
 	int32_t dy;
+};
+
+struct moveabs_msg {
+	struct xypoint pt;
+};
+
+struct mousepos_msg {
+	struct xypoint pt;
 };
 
 struct clickevent_msg {
@@ -67,18 +76,6 @@ struct setbrightness_msg {
 	float brightness;
 };
 
-struct edgemaskchange_msg {
-	dirmask_t old;
-	dirmask_t new;
-	float xpos;
-	float ypos;
-};
-
-struct setmouseposscreenrel_msg {
-	float xpos;
-	float ypos;
-};
-
 /*
  * How many bytes we will always unconditionally read at the start of a
  * message (the initial fixed-size part).
@@ -101,14 +98,14 @@ struct message {
 		struct ready_msg ready;
 		struct shutdown_msg shutdown;
 		struct moverel_msg moverel;
+		struct moveabs_msg moveabs;
+		struct mousepos_msg mousepos;
 		struct clickevent_msg clickevent;
 		struct keyevent_msg keyevent;
 		struct getclipboard_msg getclipboard;
 		struct setclipboard_msg setclipboard;
 		struct logmsg_msg logmsg;
 		struct setbrightness_msg setbrightness;
-		struct edgemaskchange_msg edgemaskchange;
-		struct setmouseposscreenrel_msg setmouseposscreenrel;
 	};
 
 	/* Extra data accompanying message (e.g. clipboard contents) */

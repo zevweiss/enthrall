@@ -58,17 +58,12 @@ static unsigned int xstate;
 #define MouseButtonMask \
 	(Button1Mask|Button2Mask|Button3Mask|Button4Mask|Button5Mask)
 
-static struct {
-	int32_t x, y;
-} screen_dimensions;
+static struct rectangle screen_dimensions;
 
 struct xypoint screen_center;
 
-/* A bitmask of which edges of the screen the mouse is currently touching */
-static dirmask_t mouse_edgemask;
-
 /* Handler to fire when mouse edge state changes */
-static mouse_edge_change_handler_t* mouse_edge_handler;
+static mousepos_handler_t* mousepos_handler;
 
 struct xhotkey {
 	KeyCode key;
@@ -517,7 +512,7 @@ static void request_window_events(Window w)
 	XSetErrorHandler(prev_errhandler);
 }
 
-int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
+int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 {
 	unsigned int i;
 	Atom atom;
@@ -540,11 +535,13 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 		return -1;
 	}
 
-	screen_dimensions.x = WidthOfScreen(XScreenOfDisplay(xdisp, XDefaultScreen(xdisp)));
-	screen_dimensions.y = HeightOfScreen(XScreenOfDisplay(xdisp, XDefaultScreen(xdisp)));
+	screen_dimensions.x.min = 0;
+	screen_dimensions.x.max = WidthOfScreen(XScreenOfDisplay(xdisp, XDefaultScreen(xdisp))) - 1;
+	screen_dimensions.y.min = 0;
+	screen_dimensions.y.max = HeightOfScreen(XScreenOfDisplay(xdisp, XDefaultScreen(xdisp))) - 1;
 
-	screen_center.x = screen_dimensions.x / 2;
-	screen_center.y = screen_dimensions.y / 2;
+	screen_center.x = screen_dimensions.x.max / 2;
+	screen_center.y = screen_dimensions.y.max / 2;
 
 	xrootwin = XDefaultRootWindow(xdisp);
 
@@ -576,12 +573,12 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
 	                      | get_mod_mask(XK_Num_Lock));
 
-	mouse_edge_handler = edge_handler;
+	mousepos_handler = mouse_handler;
 
-	if (mouse_edge_handler && opmode == MASTER) {
+	if (mousepos_handler && opmode == MASTER) {
 		if (get_all_xwindows(&all_windows, &num_windows)) {
 			elog("get_all_xwindows() failed, disabling switch-by-mouse\n");
-			mouse_edge_handler = NULL;
+			mousepos_handler = NULL;
 		} else {
 			for (i = 0; i < num_windows; i++)
 				request_window_events(all_windows[i]);
@@ -634,6 +631,11 @@ uint64_t get_microtime(void)
 	return (ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
 }
 
+void get_screen_dimensions(struct rectangle* d)
+{
+	*d = screen_dimensions;
+}
+
 struct xypoint get_mousepos(void)
 {
 	Window xchildwin;
@@ -655,62 +657,18 @@ struct xypoint get_mousepos(void)
 	return pt;
 }
 
-static dirmask_t edgemask_for_point(struct xypoint pt)
-{
-	dirmask_t mask = 0;
-
-	if (pt.x == 0)
-		mask |= LEFTMASK;
-	if (pt.x == screen_dimensions.x - 1)
-		mask |= RIGHTMASK;
-	if (pt.y == 0)
-		mask |= UPMASK;
-	if (pt.y == screen_dimensions.y - 1)
-		mask |= DOWNMASK;
-
-	return mask;
-}
-
-static void check_mouse_edge(struct xypoint pt)
-{
-	float xpos, ypos;
-	dirmask_t cur_edgemask = edgemask_for_point(pt);
-
-	if (cur_edgemask != mouse_edgemask && mouse_edge_handler) {
-		xpos = (float)pt.x / (float)screen_dimensions.x;
-		ypos = (float)pt.y / (float)screen_dimensions.y;
-		mouse_edge_handler(mouse_edgemask, cur_edgemask, xpos, ypos);
-	}
-
-	mouse_edgemask = cur_edgemask;
-}
-
 void set_mousepos(struct xypoint pt)
 {
 	XWarpPointer(xdisp, None, xrootwin, 0, 0, 0, 0, pt.x, pt.y);
 	XFlush(xdisp);
 }
 
-void set_mousepos_screenrel(float xpos, float ypos)
-{
-	struct xypoint pt = {
-		.x = lrint(xpos * (float)screen_dimensions.x),
-		.y = lrint(ypos * (float)screen_dimensions.y),
-	};
-
-	assert(xpos >= 0.0 && xpos <= 1.0);
-	assert(ypos >= 0.0 && ypos <= 1.0);
-
-	set_mousepos(pt);
-}
-
 void move_mousepos(int32_t dx, int32_t dy)
 {
 	XWarpPointer(xdisp, None, None, 0, 0, 0, 0, dx, dy);
 	XFlush(xdisp);
-	/* Only trigger edge events if no mouse buttons are held */
-	if (opmode == REMOTE && !(xstate & MouseButtonMask))
-		check_mouse_edge(get_mousepos());
+	if (mousepos_handler)
+		mousepos_handler(get_mousepos());
 }
 
 static const mousebutton_t pi_mousebuttons[] = {
@@ -946,8 +904,8 @@ static void handle_grabbed_mousemov(XMotionEvent* mev)
 static void handle_local_mousemove(XMotionEvent* mev)
 {
 	/* Only trigger edge events when no mouse buttons are held */
-	if (mouse_edge_handler && !(mev->state & MouseButtonMask))
-		check_mouse_edge((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
+	if (mousepos_handler && !(mev->state & MouseButtonMask))
+		mousepos_handler((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
 }
 
 static void handle_event(XEvent* ev)
@@ -962,7 +920,7 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case CreateNotify:
-		if (opmode == MASTER && mouse_edge_handler)
+		if (opmode == MASTER && mousepos_handler)
 			request_window_events(ev->xcreatewindow.window);
 		break;
 

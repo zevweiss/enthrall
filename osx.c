@@ -37,13 +37,11 @@ static mach_timebase_info_data_t mach_timebase;
 
 static PasteboardRef clipboard;
 
-static struct rectangle screenbounds;
+static struct rectangle screen_dimensions;
 
 struct xypoint screen_center;
 
-static dirmask_t mouse_edgemask;
-
-static mouse_edge_change_handler_t* mouse_edge_handler;
+static mousepos_handler_t* mousepos_handler;
 
 static uint64_t double_click_threshold_us;
 
@@ -111,7 +109,7 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 /* "128 displays oughta be enough for anyone..." */
 #define MAX_DISPLAYS 128
 
-int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
+int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 {
 	CGDirectDisplayID displayids[MAX_DISPLAYS];
 	CGError cgerr;
@@ -150,13 +148,13 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 	maindisplay = CGMainDisplayID();
 
 	bounds = CGDisplayBounds(maindisplay);
-	screenbounds.x.min = CGRectGetMinX(bounds);
-	screenbounds.x.max = CGRectGetMaxX(bounds) - 1;
-	screenbounds.y.min = CGRectGetMinY(bounds);
-	screenbounds.y.max = CGRectGetMaxY(bounds) - 1;
+	screen_dimensions.x.min = CGRectGetMinX(bounds);
+	screen_dimensions.x.max = CGRectGetMaxX(bounds) - 1;
+	screen_dimensions.y.min = CGRectGetMinY(bounds);
+	screen_dimensions.y.max = CGRectGetMaxY(bounds) - 1;
 
-	screen_center.x = MEDIAN(screenbounds.x.min, screenbounds.x.max);
-	screen_center.y = MEDIAN(screenbounds.y.min, screenbounds.y.max);
+	screen_center.x = MEDIAN(screen_dimensions.x.min, screen_dimensions.x.max);
+	screen_center.y = MEDIAN(screen_dimensions.y.min, screen_dimensions.y.max);
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {
@@ -164,7 +162,7 @@ int platform_init(int* fd, mouse_edge_change_handler_t* edge_handler)
 		return -1;
 	}
 
-	mouse_edge_handler = edge_handler;
+	mousepos_handler = mouse_handler;
 
 	*fd = -1;
 
@@ -206,6 +204,11 @@ uint64_t get_microtime(void)
 {
 	uint64_t t = mach_absolute_time();
 	return ((t * mach_timebase.numer) / mach_timebase.denom) / 1000;
+}
+
+void get_screen_dimensions(struct rectangle* d)
+{
+	*d = screen_dimensions;
 }
 
 static void set_gamma_table(CGDirectDisplayID disp, const struct gamma_table* gt)
@@ -284,11 +287,11 @@ static void post_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 {
 	CGEventRef ev;
 
-	cgpt.x = (cgpt.x > screenbounds.x.max) ? screenbounds.x.max : cgpt.x;
-	cgpt.y = (cgpt.y > screenbounds.y.max) ? screenbounds.y.max : cgpt.y;
+	cgpt.x = (cgpt.x > screen_dimensions.x.max) ? screen_dimensions.x.max : cgpt.x;
+	cgpt.y = (cgpt.y > screen_dimensions.y.max) ? screen_dimensions.y.max : cgpt.y;
 
-	cgpt.x = (cgpt.x < screenbounds.x.min) ? screenbounds.x.min : cgpt.x;
-	cgpt.y = (cgpt.y < screenbounds.y.min) ? screenbounds.y.min : cgpt.y;
+	cgpt.x = (cgpt.x < screen_dimensions.x.min) ? screen_dimensions.x.min : cgpt.x;
+	cgpt.y = (cgpt.y < screen_dimensions.y.min) ? screen_dimensions.y.min : cgpt.y;
 
 	ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
@@ -316,13 +319,6 @@ static inline int mouse_button_held(CGMouseButton btn)
 	return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, btn);
 }
 
-static inline int any_mouse_buttons_held(void)
-{
-	return mouse_button_held(kCGMouseButtonLeft)
-		|| mouse_button_held(kCGMouseButtonRight)
-		|| mouse_button_held(kCGMouseButtonCenter);
-}
-
 static uint64_t last_mouse_move;
 
 static void set_mousepos_cgpoint(CGPoint cgpt)
@@ -334,51 +330,6 @@ static void set_mousepos_cgpoint(CGPoint cgpt)
 void set_mousepos(struct xypoint pt)
 {
 	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
-}
-
-void set_mousepos_screenrel(float xpos, float ypos)
-{
-	struct xypoint pt = {
-		.x = lrint(xpos * (float)screenbounds.x.max),
-		.y = lrint(ypos * (float)screenbounds.y.max),
-	};
-
-	assert(xpos >= 0.0 && xpos <= 1.0);
-	assert(ypos >= 0.0 && ypos <= 1.0);
-
-	set_mousepos(pt);
-}
-
-/* FIXME: deduplicating this and x11.c's version would be nice. */
-static dirmask_t get_mouse_edgemask(struct xypoint pt)
-{
-	dirmask_t mask = 0;
-
-	if (pt.x == screenbounds.x.min)
-		mask |= LEFTMASK;
-	if (pt.x == screenbounds.x.max)
-		mask |= RIGHTMASK;
-	if (pt.y == screenbounds.y.min)
-		mask |= UPMASK;
-	if (pt.y == screenbounds.y.max)
-		mask |= DOWNMASK;
-
-	return mask;
-}
-
-/* This is also basically identical to x11.c's version */
-static void check_mouse_edge(struct xypoint pt)
-{
-	float xpos, ypos;
-	dirmask_t curmask = get_mouse_edgemask(pt);
-
-	if (curmask != mouse_edgemask && mouse_edge_handler) {
-		xpos = (float)pt.x / (float)screenbounds.x.max;
-		ypos = (float)pt.y / (float)screenbounds.y.max;
-		mouse_edge_handler(mouse_edgemask, curmask, xpos, ypos);
-	}
-
-	mouse_edgemask = curmask;
 }
 
 void move_mousepos(int32_t dx, int32_t dy)
@@ -397,9 +348,6 @@ void move_mousepos(int32_t dx, int32_t dy)
 		post_mouseevent(pt, kCGEventOtherMouseDragged, kCGMouseButtonCenter);
 	else
 		set_mousepos_cgpoint(pt);
-
-	if (opmode == REMOTE && !any_mouse_buttons_held())
-		check_mouse_edge(get_mousepos());
 }
 
 struct click_history {

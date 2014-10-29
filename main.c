@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <math.h>
 
 #include "types.h"
 #include "misc.h"
@@ -818,28 +819,29 @@ static uint64_t get_edgehist_entry(const struct edge_state* es, int rel_idx)
  */
 static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 {
-	float x, y;
 	struct message* msg;
+	struct xypoint pt;
+	struct rectangle* screendim = &focused_node->dimensions;
 
 	switch (dir) {
 	case LEFT:
-		x = 1.0;
-		y = src_y;
+		pt.x = screendim->x.max;
+		pt.y = lrintf(src_y * (float)screendim->y.max);
 		break;
 
 	case RIGHT:
-		x = 0.0;
-		y = src_y;
+		pt.x = screendim->x.min;
+		pt.y = lrintf(src_y * (float)screendim->y.max);
 		break;
 
 	case UP:
-		x = src_x;
-		y = 1.0;
+		pt.x = lrintf(src_x * (float)screendim->x.max);
+		pt.y = screendim->y.max;
 		break;
 
 	case DOWN:
-		x = src_x;
-		y = 0.0;
+		pt.x = lrintf(src_x * (float)screendim->x.max);
+		pt.y = screendim->y.min;
 		break;
 
 	default:
@@ -848,12 +850,11 @@ static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 	}
 
 	if (focused_node->remote) {
-		msg = new_message(MT_SETMOUSEPOSSCREENREL);
-		msg->setmouseposscreenrel.xpos = x;
-		msg->setmouseposscreenrel.ypos = y;
+		msg = new_message(MT_MOVEABS);
+		msg->moveabs.pt = pt;
 		enqueue_message(focused_node->remote, msg);
 	} else {
-		set_mousepos_screenrel(x, y);
+		set_mousepos(pt);
 	}
 }
 
@@ -892,26 +893,53 @@ static int trigger_edgeevent(struct edge_state* ehist, direction_t dir, edgeeven
 	return 0;
 }
 
-static void check_edgeevents(struct edge_state hist[NUM_DIRECTIONS], const char* srcname,
-                             uint32_t old, uint32_t new, float xpos, float ypos)
+static dirmask_t point_edgemask(struct xypoint pt, const struct rectangle* screen)
+{
+	dirmask_t mask = 0;
+
+	if (pt.x == screen->x.min)
+		mask |= LEFTMASK;
+	if (pt.x == screen->x.max)
+		mask |= RIGHTMASK;
+	if (pt.y == screen->y.min)
+		mask |= UPMASK;
+	if (pt.y == screen->y.max)
+		mask |= DOWNMASK;
+
+	return mask;
+}
+
+static void check_edgeevents(struct node* node, struct xypoint pt)
 {
 	direction_t dir;
-	dirmask_t dirmask;
+	dirmask_t newmask, oldmask, dirmask;
 	edgeevent_t edgeevtype;
+	float xpos, ypos;
+
+	newmask = point_edgemask(pt, &node->dimensions);
+	oldmask = node->edgemask;
+
+	node->edgemask = newmask;
+
+	if (newmask == oldmask)
+		return;
+
+	xpos = (float)pt.x / (float)node->dimensions.x.max;
+	ypos = (float)pt.y / (float)node->dimensions.y.max;
 
 	for_each_direction (dir) {
 		dirmask = 1U << dir;
-		if ((old & dirmask) != (new & dirmask)) {
-			edgeevtype = (new & dirmask) ? EE_ARRIVE : EE_DEPART;
-			if (trigger_edgeevent(&hist[dir], dir, edgeevtype, xpos, ypos))
-				elog("out-of-sync edge event on %s ignored\n", srcname);
+		if ((oldmask & dirmask) != (newmask & dirmask)) {
+			edgeevtype = (newmask & dirmask) ? EE_ARRIVE : EE_DEPART;
+			if (trigger_edgeevent(&node->edgehist[dir], dir, edgeevtype, xpos, ypos))
+				elog("out-of-sync edge event on %s ignored\n", node->name);
 		}
 	}
 }
 
-static void trigger_edgeevent_cb(uint32_t old, uint32_t new, float xpos, float ypos)
+static void mousepos_cb(struct xypoint pt)
 {
-	check_edgeevents(config->master.edgehist, "master", old, new, xpos, ypos);
+	check_edgeevents(&config->master, pt);
 }
 
 static void handle_message(struct remote* rmt, const struct message* msg)
@@ -929,6 +957,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
 		elog("remote '%s' becomes ready...\n", rmt->node.name);
+		rmt->node.dimensions = msg->ready.screendim;
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
 			                      config->focus_hint.duration,
@@ -936,11 +965,6 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		break;
 
 	case MT_SETCLIPBOARD:
-		if (rmt->state != CS_CONNECTED) {
-			elog("got unexpected SETCLIPBOARD from non-connected "
-			     "remote '%s', ignoring.\n", rmt->node.name);
-			break;
-		}
 		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
 		if (focused_node->remote) {
 			resp = new_message(MT_SETCLIPBOARD);
@@ -957,14 +981,8 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		     logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
 		break;
 
-	case MT_EDGEMASKCHANGE:
-		if ((msg->edgemaskchange.old & ~ALLDIRS_MASK)
-		    || (msg->edgemaskchange.new & ~ALLDIRS_MASK))
-			fail_remote(rmt, "invalid edge mask");
-		else
-			check_edgeevents(rmt->node.edgehist, rmt->node.name,
-			                 msg->edgemaskchange.old, msg->edgemaskchange.new,
-			                 msg->edgemaskchange.xpos, msg->edgemaskchange.ypos);
+	case MT_MOUSEPOS:
+		check_edgeevents(&rmt->node, msg->mousepos.pt);
 		break;
 
 	default:
@@ -1168,11 +1186,6 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 
-	if (platform_init(&platform_event_fd, trigger_edgeevent_cb)) {
-		elog("platform_init failed\n");
-		exit(1);
-	}
-
 	cfgfile = fopen(argv[0], "r");
 	if (!cfgfile) {
 		elog("%s: %s\n", argv[0], strerror(errno));
@@ -1195,11 +1208,18 @@ int main(int argc, char** argv)
 	}
 
 	memset(&cfg, 0, sizeof(cfg));
-	cfg.master.name = "<master>";
 	if (parse_cfg(cfgfile, &cfg))
 		exit(1);
 	fclose(cfgfile);
 	config = &cfg;
+
+	if (platform_init(&platform_event_fd, mousepos_cb)) {
+		elog("platform_init failed\n");
+		exit(1);
+	}
+
+	cfg.master.name = "<master>";
+	get_screen_dimensions(&cfg.master.dimensions);
 
 	apply_topology();
 	check_remotes();

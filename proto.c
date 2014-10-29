@@ -55,17 +55,17 @@ static uint32_t float_to_fixed(float orig_fp)
 
 static const size_t payload_sizes[] = {
 	[MT_SETUP] = sizeof(uint32_t),
-	[MT_READY] = 0,
+	[MT_READY] = 4 * sizeof(uint32_t),
 	[MT_SHUTDOWN] = 0,
 	[MT_MOVEREL] = 2 * sizeof(int32_t),
+	[MT_MOVEABS] = 2 * sizeof(uint32_t),
+	[MT_MOUSEPOS] = 2 * sizeof(uint32_t),
 	[MT_CLICKEVENT] = 2 * sizeof(uint32_t),
 	[MT_KEYEVENT] = 2 * sizeof(uint32_t),
 	[MT_GETCLIPBOARD] = 0,
 	[MT_SETCLIPBOARD] = 0,
 	[MT_LOGMSG] = 0,
 	[MT_SETBRIGHTNESS] = sizeof(uint32_t),
-	[MT_EDGEMASKCHANGE] = 4 * sizeof(uint32_t),
-	[MT_SETMOUSEPOSSCREENREL] = 2 * sizeof(uint32_t),
 };
 
 static void flatten_setup(const struct message* msg, void* buf)
@@ -80,10 +80,20 @@ static void unflatten_setup(const void* buf, struct message* msg)
 
 static void flatten_ready(const struct message* msg, void* buf)
 {
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(msg->ready.screendim.x.min);
+	u32b[1] = htonl(msg->ready.screendim.x.max);
+	u32b[2] = htonl(msg->ready.screendim.y.min);
+	u32b[3] = htonl(msg->ready.screendim.y.max);
 }
 
 static void unflatten_ready(const void* buf, struct message* msg)
 {
+	const uint32_t* u32b = buf;
+	msg->ready.screendim.x.min = ntohl(u32b[0]);
+	msg->ready.screendim.x.max = ntohl(u32b[1]);
+	msg->ready.screendim.y.min = ntohl(u32b[2]);
+	msg->ready.screendim.y.max = ntohl(u32b[3]);
 }
 
 static void flatten_shutdown(const struct message* msg, void* buf)
@@ -106,6 +116,34 @@ static void unflatten_moverel(const void* buf, struct message* msg)
 	const uint32_t* u32b = buf;
 	msg->moverel.dx = ntohl(u32b[0]);
 	msg->moverel.dy = ntohl(u32b[1]);
+}
+
+static void flatten_moveabs(const struct message* msg, void* buf)
+{
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(msg->moveabs.pt.x);
+	u32b[1] = htonl(msg->moveabs.pt.y);
+}
+
+static void unflatten_moveabs(const void* buf, struct message* msg)
+{
+	const uint32_t* u32b = buf;
+	msg->moveabs.pt.x = ntohl(u32b[0]);
+	msg->moveabs.pt.y = ntohl(u32b[1]);
+}
+
+static void flatten_mousepos(const struct message* msg, void* buf)
+{
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(msg->mousepos.pt.x);
+	u32b[1] = htonl(msg->mousepos.pt.y);
+}
+
+static void unflatten_mousepos(const void* buf, struct message* msg)
+{
+	const uint32_t* u32b = buf;
+	msg->mousepos.pt.x = ntohl(u32b[0]);
+	msg->mousepos.pt.y = ntohl(u32b[1]);
 }
 
 static void flatten_clickevent(const struct message* msg, void* buf)
@@ -172,51 +210,19 @@ static void unflatten_setbrightness(const void* buf, struct message* msg)
 	msg->setbrightness.brightness = fixed_to_float(ntohl(u32b[0]));
 }
 
-static void flatten_edgemaskchange(const struct message* msg, void* buf)
-{
-	uint32_t* u32b = buf;
-	u32b[0] = htonl(msg->edgemaskchange.old);
-	u32b[1] = htonl(msg->edgemaskchange.new);
-	u32b[2] = htonl(float_to_fixed(msg->edgemaskchange.xpos));
-	u32b[3] = htonl(float_to_fixed(msg->edgemaskchange.ypos));
-}
-
-static void unflatten_edgemaskchange(const void* buf, struct message* msg)
-{
-	const uint32_t* u32b = buf;
-	msg->edgemaskchange.old = ntohl(u32b[0]);
-	msg->edgemaskchange.new = ntohl(u32b[1]);
-	msg->edgemaskchange.xpos = fixed_to_float(ntohl(u32b[2]));
-	msg->edgemaskchange.ypos = fixed_to_float(ntohl(u32b[3]));
-}
-
-static void flatten_setmouseposscreenrel(const struct message* msg, void* buf)
-{
-	uint32_t* u32b = buf;
-	u32b[0] = htonl(float_to_fixed(msg->setmouseposscreenrel.xpos));
-	u32b[1] = htonl(float_to_fixed(msg->setmouseposscreenrel.ypos));
-}
-
-static void unflatten_setmouseposscreenrel(const void* buf, struct message* msg)
-{
-	const uint32_t* u32b = buf;
-	msg->setmouseposscreenrel.xpos = fixed_to_float(ntohl(u32b[0]));
-	msg->setmouseposscreenrel.ypos = fixed_to_float(ntohl(u32b[1]));
-}
-
 static void (*const flatteners[])(const struct message*, void*) = {
 	[MT_SETUP] = flatten_setup,
 	[MT_READY] = flatten_ready,
 	[MT_SHUTDOWN] = flatten_shutdown,
 	[MT_MOVEREL] = flatten_moverel,
+	[MT_MOVEABS] = flatten_moveabs,
+	[MT_MOUSEPOS] = flatten_mousepos,
 	[MT_CLICKEVENT] = flatten_clickevent,
 	[MT_KEYEVENT] = flatten_keyevent,
 	[MT_GETCLIPBOARD] = flatten_getclipboard,
 	[MT_SETCLIPBOARD] = flatten_setclipboard,
 	[MT_LOGMSG] = flatten_logmsg,
 	[MT_SETBRIGHTNESS] = flatten_setbrightness,
-	[MT_EDGEMASKCHANGE] = flatten_edgemaskchange,
-	[MT_SETMOUSEPOSSCREENREL] = flatten_setmouseposscreenrel,
 };
 
 static void (*const unflatteners[])(const void*, struct message*) = {
@@ -224,14 +230,14 @@ static void (*const unflatteners[])(const void*, struct message*) = {
 	[MT_READY] = unflatten_ready,
 	[MT_SHUTDOWN] = unflatten_shutdown,
 	[MT_MOVEREL] = unflatten_moverel,
+	[MT_MOVEABS] = unflatten_moveabs,
+	[MT_MOUSEPOS] = unflatten_mousepos,
 	[MT_CLICKEVENT] = unflatten_clickevent,
 	[MT_KEYEVENT] = unflatten_keyevent,
 	[MT_GETCLIPBOARD] = unflatten_getclipboard,
 	[MT_SETCLIPBOARD] = unflatten_setclipboard,
 	[MT_LOGMSG] = unflatten_logmsg,
 	[MT_SETBRIGHTNESS] = unflatten_setbrightness,
-	[MT_EDGEMASKCHANGE] = unflatten_edgemaskchange,
-	[MT_SETMOUSEPOSSCREENREL] = unflatten_setmouseposscreenrel,
 };
 
 static void flatten_message(const struct message* msg, void* buf)
