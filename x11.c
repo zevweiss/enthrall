@@ -980,6 +980,8 @@ static void handle_event(XEvent* ev)
 	case UnmapNotify:
 	case DestroyNotify:
 	case ConfigureNotify:
+	case ClientMessage:
+	case ReparentNotify:
 		/* ignore */
 		break;
 
