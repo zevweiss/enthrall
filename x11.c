@@ -132,6 +132,7 @@ static int set_keygrab(KeyCode kc, unsigned int orig_mask, int grab)
 	unsigned int slk_mask = get_mod_mask(XK_Scroll_Lock);
 	unsigned int clk_mask = LockMask;
 
+	XSync(xdisp, False);
 	keygrab_err = 0;
 	prev_errhandler = XSetErrorHandler(xerr_keygrab);
 
@@ -156,9 +157,8 @@ static int set_keygrab(KeyCode kc, unsigned int orig_mask, int grab)
 	}
 
 out:
+	XSync(xdisp, False);
 	XSetErrorHandler(prev_errhandler);
-
-	XFlush(xdisp);
 
 	return keygrab_err;
 }
@@ -473,20 +473,26 @@ static int get_all_xwindows(Window** wlist, unsigned int* nwin)
 	return append_child_windows((*wlist)[0], wlist, nwin);
 }
 
-static int xerr_abort(Display* d, XErrorEvent* xev)
+static void log_xerr(Display* d, XErrorEvent* xev, const char* pfx)
 {
 	char errbuf[1024];
 
 	XGetErrorText(d,  xev->error_code, errbuf, sizeof(errbuf));
 	errbuf[sizeof(errbuf)-1] = '\0';
 
-	elog("X Error: request %hhu.%hhu -> %s\n", xev->request_code,
+	elog("%s X Error: request %hhu.%hhu -> %s\n", pfx, xev->request_code,
 	     xev->minor_code, errbuf);
+}
+
+static int xerr_abort(Display* d, XErrorEvent* xev)
+{
+	log_xerr(d, xev, "Fatal");
 	abort();
 }
 
 static int xerr_ignore(Display* d, XErrorEvent* xev)
 {
+	log_xerr(d, xev, "Ignored");
 	return 0;
 }
 
@@ -497,7 +503,7 @@ static int xerr_ignore(Display* d, XErrorEvent* xev)
  * (e.g. upon learning that the window in question exists) and it potentially
  * being destroyed.  If we call XSelectInput on it but it's already gone,
  * we'll get a BadWindow error, so we just ignore that if it happens.  We do
- * however call XFlush() before switching error handlers so as to avoid
+ * however call XSync() before switching error handlers so as to avoid
  * inappropriately ignoring errors on any requests that happened to be queued
  * at the time of the call.
  */
@@ -505,10 +511,10 @@ static void request_window_events(Window w)
 {
 	int (*prev_errhandler)(Display*, XErrorEvent*);
 
-	XFlush(xdisp);
+	XSync(xdisp, False);
 	prev_errhandler = XSetErrorHandler(xerr_ignore);
 	XSelectInput(xdisp, w, PointerMotionMask|SubstructureNotifyMask);
-	XFlush(xdisp);
+	XSync(xdisp, False);
 	XSetErrorHandler(prev_errhandler);
 }
 
@@ -759,7 +765,7 @@ int grab_inputs(void)
 		return status;
 	}
 
-	XFlush(xdisp);
+	XSync(xdisp, False);
 
 	return status;
 }
@@ -768,7 +774,7 @@ void ungrab_inputs(void)
 {
 	XUngrabKeyboard(xdisp, CurrentTime);
 	XUngrabPointer(xdisp, CurrentTime);
-	XFlush(xdisp);
+	XSync(xdisp, False);
 }
 
 static struct xypoint last_seen_mousepos;
