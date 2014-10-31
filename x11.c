@@ -644,13 +644,14 @@ void get_screen_dimensions(struct rectangle* d)
 
 struct xypoint get_mousepos(void)
 {
-	Window xchildwin;
+	Window xchildwin, root_ret;
 	int child_x, child_y, tmp_x, tmp_y;
 	unsigned int tmp_mask;
 	struct xypoint pt;
-	Bool onscreen = XQueryPointer(xdisp, xrootwin, &xrootwin, &xchildwin,
+	Bool onscreen = XQueryPointer(xdisp, xrootwin, &root_ret, &xchildwin,
 	                              &tmp_x, &tmp_y, &child_x, &child_y,
 	                              &tmp_mask);
+	assert(root_ret == xrootwin);
 
 	if (!onscreen) {
 		elog("X11 pointer not on screen?\n");
