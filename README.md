@@ -61,8 +61,6 @@ writable by any other user.
  - Mac OS X is currently only supported as a remote (X11 should work
    as a master or remote on Linux or FreeBSD).
 
- - OS X remotes with multiple screens don't currently work.
-
  - When using `switch-indicator = dim-inactive`, inactive OS X remotes
    will sometimes (for reasons currently unknown) spontaneously reset
    themselves to full brightness.

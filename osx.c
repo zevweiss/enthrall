@@ -37,7 +37,10 @@ static mach_timebase_info_data_t mach_timebase;
 
 static PasteboardRef clipboard;
 
-static struct rectangle screen_dimensions;
+static struct rectangle screen_dimensions = {
+	.x = { .min = 0, .max = 0, },
+	.y = { .min = 0, .max = 0, },
+};
 
 struct xypoint screen_center;
 
@@ -58,6 +61,7 @@ struct gamma_table {
 
 struct displayinfo {
 	CGDirectDisplayID id;
+	struct rectangle bounds;
 	struct gamma_table orig_gamma;
 	struct gamma_table alt_gamma;
 };
@@ -85,6 +89,7 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 {
 	uint32_t numents;
 	CGError cgerr;
+	CGRect bounds;
 
 	d->id = id;
 	setup_gamma_table(&d->orig_gamma, CGDisplayGammaTableCapacity(d->id));
@@ -104,6 +109,21 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 		d->orig_gamma.numents = numents;
 		d->alt_gamma.numents = numents;
 	}
+
+	bounds = CGDisplayBounds(d->id);
+	d->bounds.x.min = CGRectGetMinX(bounds);
+	d->bounds.x.max = CGRectGetMaxX(bounds);
+	d->bounds.y.min = CGRectGetMinY(bounds);
+	d->bounds.y.max = CGRectGetMaxY(bounds);
+
+	if (d->bounds.x.min < screen_dimensions.x.min)
+		screen_dimensions.x.min = d->bounds.x.min;
+	if (d->bounds.x.max > screen_dimensions.x.max)
+		screen_dimensions.x.max = d->bounds.x.max;
+	if (d->bounds.y.min < screen_dimensions.y.min)
+		screen_dimensions.y.min = d->bounds.y.min;
+	if (d->bounds.y.max > screen_dimensions.y.max)
+		screen_dimensions.y.max = d->bounds.y.max;
 }
 
 /* "128 displays oughta be enough for anyone..." */
@@ -114,8 +134,6 @@ int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 	CGDirectDisplayID displayids[MAX_DISPLAYS];
 	CGError cgerr;
 	OSStatus status;
-	CGDirectDisplayID maindisplay;
-	CGRect bounds;
 	uint32_t i;
 	kern_return_t kr;
 	NXEventHandle nxevh;
@@ -144,14 +162,6 @@ int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 
 	for (i = 0; i < num_displays; i++)
 		init_display(&displays[i], displayids[i]);
-
-	maindisplay = CGMainDisplayID();
-
-	bounds = CGDisplayBounds(maindisplay);
-	screen_dimensions.x.min = CGRectGetMinX(bounds);
-	screen_dimensions.x.max = CGRectGetMaxX(bounds) - 1;
-	screen_dimensions.y.min = CGRectGetMinY(bounds);
-	screen_dimensions.y.max = CGRectGetMaxY(bounds) - 1;
 
 	screen_center.x = MEDIAN(screen_dimensions.x.min, screen_dimensions.x.max);
 	screen_center.y = MEDIAN(screen_dimensions.y.min, screen_dimensions.y.max);
@@ -283,15 +293,53 @@ static CGPoint get_mousepos_cgpoint(void)
 
 #define NO_MOUSEBUTTON 0
 
+static int get_pt_display(CGPoint pt, CGDirectDisplayID* d)
+{
+	uint32_t numdisplays;
+	CGError err;
+
+	err = CGGetDisplaysWithPoint(pt, !!d, d, &numdisplays);
+	if (err) {
+		elog("CGGetDisplaysWithPoint() failed: %d\n", err);
+		abort();
+	}
+	return !!numdisplays;
+}
+
 static void post_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button)
 {
+	CGDirectDisplayID disp;
+	CGPoint curpos;
+	CGRect bounds;
 	CGEventRef ev;
 
-	cgpt.x = (cgpt.x > screen_dimensions.x.max) ? screen_dimensions.x.max : cgpt.x;
-	cgpt.y = (cgpt.y > screen_dimensions.y.max) ? screen_dimensions.y.max : cgpt.y;
+	if (!get_pt_display(cgpt, &disp)) {
+		curpos = get_mousepos_cgpoint();
+		if (!get_pt_display(curpos, &disp)) {
+			elog("mouse position (%g,%g) off any display?\n", curpos.x, curpos.y);
+			disp = CGMainDisplayID();
+		}
+	}
 
-	cgpt.x = (cgpt.x < screen_dimensions.x.min) ? screen_dimensions.x.min : cgpt.x;
-	cgpt.y = (cgpt.y < screen_dimensions.y.min) ? screen_dimensions.y.min : cgpt.y;
+	/*
+	 * Why the subtraction of 0.1 on the max-bound checks here?  Stupidly
+	 * enough, without them OSX's pointer-at-edge-of-screen detection
+	 * breaks (your auto-hiding Dock won't pop up, for example).
+	 *
+	 * Try as I might, I still have yet to see *any* sense whatsoever in
+	 * tracking the mouse position in floating point.  Whither sanity,
+	 * Apple?  WTF?
+	 */
+
+	bounds = CGDisplayBounds(disp);
+	if (cgpt.x < CGRectGetMinX(bounds))
+		cgpt.x = CGRectGetMinX(bounds);
+	if (cgpt.x > CGRectGetMaxX(bounds))
+		cgpt.x = CGRectGetMaxX(bounds) - 0.1;
+	if (cgpt.y < CGRectGetMinY(bounds))
+		cgpt.y = CGRectGetMinY(bounds);
+	if (cgpt.y > CGRectGetMaxY(bounds))
+		cgpt.y = CGRectGetMaxY(bounds) - 0.1;
 
 	ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
