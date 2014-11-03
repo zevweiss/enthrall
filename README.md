@@ -1,5 +1,5 @@
 # enthrall
---------
+------------
 
 Keyboard/mouse remote control (plus clipboard synchronization) over
 the network.
@@ -65,7 +65,7 @@ how various configuration options work.
 In the event of errors (e.g. network connection drops), `enthrall`
 will attempt to automatically reconnect to any failed remotes, though
 it will give up if these attempts fail repeatedly.  You can reset this
-and restart the connection-reestablishment attempts with a "reconnect"
+and restart the connection-reestablishment attempts with a `reconnect`
 action bound to a hotkey, however (see `example.conf`).
 
 ### Security
@@ -78,14 +78,20 @@ writable by any other user.
 
 ### Notes/Limitations/Known Issues
 
- - When using `switch-indicator = dim-inactive`, inactive OS X remotes
-   will sometimes (for reasons currently unknown) spontaneously reset
+ - When using `show-focus = dim-inactive`, inactive OS X remotes will
+   sometimes (for reasons currently unknown) spontaneously reset
    themselves to full brightness.
 
- - Having windows of certain applications (Chrome or virt-manager for
-   example) at screen edges may inhibit `enthrall`'s detection of the
-   mouse pointer reaching those edges, disrupting mouse-switch
-   fuctionality.
+ - On X11, having windows of certain applications (Chrome or
+   virt-manager for example) at screen edges may inhibit `enthrall`'s
+   detection of the mouse pointer reaching those edges, disrupting
+   mouse-switch fuctionality (on the master node, remotes should be
+   unaffected).
+
+ - On OSX, having iTerm2 (possibly other applications as well, though
+   that's the only one I've noticed) as the foreground application
+   prevents `enthrall` from intercepting keyboard events, breaking
+   proper operation as a master node.
 
  - X11 selection (a.k.a. "clipboard", colloquially) management is
    somewhat incomplete; very large copy/paste operations (tens of
