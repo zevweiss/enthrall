@@ -63,7 +63,7 @@ static struct rectangle screen_dimensions;
 
 struct xypoint screen_center;
 
-/* Handler to fire when mouse edge state changes */
+/* Handler to fire when mouse position changes (in master mode) */
 static mousepos_handler_t* mousepos_handler;
 
 struct scheduled_call {
@@ -202,13 +202,12 @@ static const struct xhotkey* find_hotkey(const XKeyEvent* kev)
 #define XKEYMAP_SIZE 32
 
 struct hotkey_context {
-	const XKeyEvent* event;
 	char keymap_state[XKEYMAP_SIZE];
 };
 
 static int do_hotkey(const XKeyEvent* kev)
 {
-	struct hotkey_context ctx = { .event = kev, };
+	struct hotkey_context ctx;
 	const struct xhotkey* k = find_hotkey(kev);
 
 	if (k) {
@@ -1008,7 +1007,7 @@ static void handle_event(XEvent* ev)
 	}
 }
 
-void process_events(void)
+static void process_events(void)
 {
 	XEvent ev;
 
