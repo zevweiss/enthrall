@@ -335,6 +335,7 @@ int fill_msgbuf(int fd, struct partrecv* pr)
 	ssize_t status;
 	size_t msgsize, to_read;
 	msgtype_t type;
+	void* hdrbuf;
 
 	while (pr->bytes_recvd < MSGHDR_SIZE) {
 		status = read(fd, pr->hdrbuf + pr->bytes_recvd,
@@ -350,11 +351,12 @@ int fill_msgbuf(int fd, struct partrecv* pr)
 		pr->bytes_recvd += status;
 	}
 
-	type = ntohl(*(msgtype_t*)(pr->hdrbuf));
+	hdrbuf = &pr->hdrbuf;
+	type = ntohl(*(msgtype_t*)hdrbuf);
 	if (type >= ARR_LEN(payload_sizes))
 		return -EINVAL;
 	msgsize = MSGHDR_SIZE + payload_sizes[type]
-		+ ntohl(*(uint32_t*)(pr->hdrbuf + sizeof(msgtype_t)));
+		+ ntohl(*(uint32_t*)(hdrbuf + sizeof(msgtype_t)));
 
 	to_read = msgsize - pr->bytes_recvd;
 
