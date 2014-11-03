@@ -58,9 +58,6 @@ writable by any other user.
 
 ### Notes/Limitations/Known Issues
 
- - Mac OS X is currently only supported as a remote (X11 should work
-   as a master or remote on Linux or FreeBSD).
-
  - When using `switch-indicator = dim-inactive`, inactive OS X remotes
    will sometimes (for reasons currently unknown) spontaneously reset
    themselves to full brightness.
@@ -80,8 +77,6 @@ writable by any other user.
    the same version of `enthrall` on all participating machines.
 
 ### TODO/Planned Features
-
- - Support for OS X as a master.
 
  - Configurable key-remapping
 

@@ -20,6 +20,7 @@
 #include "proto.h"
 #include "platform.h"
 #include "osx-keycodes.h"
+#include "events.h"
 
 #if CGFLOAT_IS_DOUBLE
 #define cground lround
@@ -126,10 +127,24 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 		screen_dimensions.y.max = d->bounds.y.max;
 }
 
+/*
+ * HACK: More API stupidity from Apple means you can't hide the cursor if
+ * you're not the foreground application...unless you know their secret
+ * handshake to allow doing that, which requires calling these undeclared,
+ * undocumented functions.
+ *
+ * References:
+ *   http://lists.apple.com/archives/carbon-dev/2006/Jan/msg00555.html
+ *   http://stackoverflow.com/questions/3885896/globally-hiding-cursor-from-background-app
+ */
+typedef int CGSConnectionID;
+extern void CGSSetConnectionProperty(CGSConnectionID, CGSConnectionID, CFStringRef, CFBooleanRef);
+extern CGSConnectionID _CGSDefaultConnection(void);
+
 /* "128 displays oughta be enough for anyone..." */
 #define MAX_DISPLAYS 128
 
-int platform_init(int* fd, mousepos_handler_t* mouse_handler)
+int platform_init(mousepos_handler_t* mouse_handler)
 {
 	CGDirectDisplayID displayids[MAX_DISPLAYS];
 	CGError cgerr;
@@ -172,9 +187,13 @@ int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 		return -1;
 	}
 
-	mousepos_handler = mouse_handler;
+	osx_keycodes_init();
 
-	*fd = -1;
+	if (opmode == MASTER)
+		CGSSetConnectionProperty(_CGSDefaultConnection(), _CGSDefaultConnection(),
+		                         CFSTR("SetsCursorInBackground"), kCFBooleanTrue);
+
+	mousepos_handler = mouse_handler;
 
 	return 0;
 }
@@ -182,6 +201,8 @@ int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 void platform_exit(void)
 {
 	uint32_t i;
+
+	osx_keycodes_exit();
 
 	CFRelease(clipboard);
 	CGDisplayRestoreColorSyncSettings();
@@ -192,22 +213,156 @@ void platform_exit(void)
 	}
 }
 
+struct osxhotkey {
+	CGKeyCode keycode;
+	CGEventFlags modmask;
+	hotkey_callback_t callback;
+	void* arg;
+
+	EventHotKeyRef evref;
+};
+
+static struct osxhotkey* hotkeys;
+static unsigned int num_hotkeys;
+
+struct hotkey_context {
+	uint32_t modmask;
+};
+
+static struct osxhotkey* find_hotkey(uint32_t keycode, uint32_t modmask)
+{
+	struct osxhotkey* hk;
+
+	for (hk = hotkeys; hk < hotkeys + num_hotkeys; hk++) {
+		if (hk->keycode == keycode && hk->modmask == modmask) {
+			return hk;
+		}
+	}
+
+	return NULL;
+}
+
+static struct osxhotkey* do_hotkey(uint32_t keycode, uint32_t modmask)
+{
+	struct hotkey_context hkctx = { .modmask = modmask, };
+	struct osxhotkey* hk = find_hotkey(keycode, modmask);
+
+	if (hk)
+		hk->callback(&hkctx, hk->arg);
+
+	return hk;
+}
+
+/*
+ * There are, as far as I can see, two approaches to setting up global
+ * hotkeys.  One approach uses a global event tap and sniffs keyboard events
+ * searching for one that matches a bound hotkey (this is the one that's
+ * currently implemented and in use).  The other involves calling
+ * InstallApplicationEventHandler() and RegisterEventHotKey() -- to get the
+ * callbacks set up with these, however, we'd apparently need to use
+ * RunApplicationEventLoop() instead of CFRunLoops.  That API is deprecated,
+ * however (the declaration of RunApplicationEventLoop() is #ifdef'd out on
+ * 64-bit builds in the system headers, though the symbol is still present in
+ * the libraries so a manual declaration seems to work), and furthermore I
+ * don't know how (or if it's possible) to integrate the two different event
+ * loops, so I've stuck with the CFRunLoop/CGEventTap approach.  The
+ * pre-filtered direct callbacks provided by the RegisterEventHotKey()
+ * approach seems much nicer than manually filtering them out of the stream of
+ * all global keystrokes, so I've left some vestiges of that code around "just
+ * in case"...
+ */
+#define EVENTTAP_HOTKEYS
+
+#ifndef EVENTTAP_HOTKEYS
+static EventHandlerUPP hotkey_handler_upp;
+static EventHandlerRef hotkey_handlerref;
+
+static OSStatus hotkey_handler_fn(EventHandlerCallRef next, EventRef ev, void* arg)
+{
+	EventHotKeyID hkid;
+	OSStatus status;
+	struct osxhotkey* hk;
+	struct hotkey_context ctx;
+
+	status = GetEventParameter(ev, kEventParamDirectObject, typeEventHotKeyID,
+	                           NULL, sizeof(hkid), NULL, &hkid);
+	if (status) {
+		elog("GetEventParameter() failed in hotkey_handler_fn()\n");
+		abort();
+	}
+
+	if (hkid.id >= num_hotkeys) {
+		elog("Out-of-bounds hotkey ID in hotkey_handler_fn()\n");
+		abort();
+	}
+
+	hk = &hotkeys[hkid.id];
+	ctx.modmask = hk->modmask;
+	hk->callback(&ctx, hk->arg);
+
+	return noErr;
+}
+#endif
+
 int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 {
-	elog("OSX bind_hotkey() not yet implemented\n");
-	return 1;
+	CGKeyCode kc;
+	CGEventFlags modmask;
+	struct osxhotkey* hk;
+#ifndef EVENTTAP_HOTKEYS
+	EventTypeSpec evtype;
+	EventHotKeyID hkid = { .signature = 'enth', .id = num_hotkeys, };
+#endif
+
+	if (parse_keystring(keystr, &kc, &modmask))
+		return -1;
+
+	for (hk = hotkeys; hk < hotkeys + num_hotkeys; hk++) {
+		if (hk->modmask == modmask && hk->keycode == kc) {
+			elog("hotkey '%s' conflicts with an earlier hotkey binding\n", keystr);
+			return -1;
+		}
+	}
+
+#ifndef EVENTTAP_HOTKEYS
+	if (!num_hotkeys) {
+		hotkey_handler_upp = NewEventHandlerUPP(hotkey_handler_fn);
+		evtype.eventClass = kEventClassKeyboard;
+		evtype.eventKind = kEventHotKeyPressed;
+
+		InstallApplicationEventHandler(hotkey_handler_upp, 1, &evtype, NULL,
+		                               &hotkey_handlerref);
+	}
+#endif
+
+	hotkeys = xrealloc(hotkeys, ++num_hotkeys * sizeof(*hotkeys));
+	hk = &hotkeys[num_hotkeys-1];
+
+	hk->keycode = kc;
+	hk->modmask = modmask;
+	hk->callback = cb;
+	hk->arg = arg;
+
+#ifndef EVENTTAP_HOTKEYS
+	/*
+	 * NOTE: if this is to be used, hk->modmask will need to be a mask of
+	 * cmdKey and friends, not kCGEventFlagMask* as it is now.
+	 */
+	RegisterEventHotKey(hk->keycode, hk->modmask, hkid, GetApplicationEventTarget(),
+	                    kEventHotKeyExclusive, &hk->evref);
+#endif
+
+	return 0;
 }
 
 keycode_t* get_current_modifiers(void)
 {
-	elog("OSX get_current_modifiers() NYI\n");
-	return NULL;
+	return modmask_to_etkeycodes(modflags);
 }
 
 keycode_t* get_hotkey_modifiers(hotkey_context_t ctx)
 {
-	elog("OSX get_hotkey_modifiers() not yet implemented\n");
-	return NULL;
+	return modmask_to_etkeycodes(ctx->modmask);
 }
 
 uint64_t get_microtime(void)
@@ -380,6 +535,13 @@ void set_mousepos(struct xypoint pt)
 	set_mousepos_cgpoint(CGPointMake((CGFloat)pt.x, (CGFloat)pt.y));
 }
 
+/* Variant of set_mousepos() that doesn't trigger additional events */
+static void set_mousepos_silent(struct xypoint pt)
+{
+	CGPoint cgpt = { .x = (CGFloat)pt.x, .y = (CGFloat)pt.y, };
+	CGWarpMouseCursorPosition(cgpt);
+}
+
 void move_mousepos(int32_t dx, int32_t dy)
 {
 	CGPoint pt = get_mousepos_cgpoint();
@@ -530,7 +692,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 	CGKeyCode cgkc;
 	CGEventFlags flags;
 
-	cgkc = keycode_to_cgkeycode(key);
+	cgkc = etkeycode_to_cgkeycode(key);
 	if (cgkc == kVK_NULL) {
 		elog("keycode %u not mapped\n", key);
 		return;
@@ -640,16 +802,404 @@ int set_clipboard_text(const char* text)
 
 int grab_inputs(void)
 {
-	elog("grab_inputs() NYI on OSX\n");
-	return -1;
+	return CGDisplayHideCursor(kCGDirectMainDisplay) == kCGErrorSuccess ? 0 : -1;
 }
 
 void ungrab_inputs(void)
 {
-	elog("ungrab_inputs() NYI on OSX\n");
+	CGDisplayShowCursor(kCGDirectMainDisplay);
 }
 
-void process_events(void)
+struct fdmon_ctx {
+	int fd;
+	fdmon_callback_t readcb, writecb;
+	void* arg;
+	uint32_t flags;
+	int refcount;
+
+	CFFileDescriptorRef fdref;
+	CFRunLoopSourceRef rlsrc;
+};
+
+static void fdmon_ref(struct fdmon_ctx* ctx)
 {
-	elog("process_events() NYI on OSX\n");
+	assert(ctx->refcount > 0);
+	ctx->refcount += 1;
+}
+
+static void fdmon_unref(struct fdmon_ctx* ctx)
+{
+	assert(ctx->refcount > 0);
+	ctx->refcount -= 1;
+	if (ctx->refcount)
+		return;
+
+	CFFileDescriptorDisableCallBacks(ctx->fdref, kCFFileDescriptorReadCallBack
+	                                            |kCFFileDescriptorWriteCallBack);
+	CFRunLoopRemoveSource(CFRunLoopGetMain(), ctx->rlsrc, kCFRunLoopCommonModes);
+
+	CFRunLoopSourceInvalidate(ctx->rlsrc);
+	CFFileDescriptorInvalidate(ctx->fdref);
+
+	CFRelease(ctx->fdref);
+	CFRelease(ctx->rlsrc);
+
+	xfree(ctx);
+}
+
+static void fdmon_set_enabled_callbacks(struct fdmon_ctx* ctx)
+{
+	CFOptionFlags cf_en = 0, cf_dis = 0;
+
+	if (ctx->flags & FM_READ)
+		cf_en |= kCFFileDescriptorReadCallBack;
+	else
+		cf_dis |= kCFFileDescriptorReadCallBack;
+
+	if (ctx->flags & FM_WRITE)
+		cf_en |= kCFFileDescriptorWriteCallBack;
+	else
+		cf_dis |= kCFFileDescriptorWriteCallBack;
+
+	if (cf_en)
+		CFFileDescriptorEnableCallBacks(ctx->fdref, cf_en);
+	if (cf_dis)
+		CFFileDescriptorDisableCallBacks(ctx->fdref, cf_dis);
+}
+
+static void fdmon_callback(CFFileDescriptorRef fdref, CFOptionFlags types, void* arg)
+{
+	struct fdmon_ctx* ctx = arg;
+
+	/* Callbacks could free ctx, so grab a reference here */
+	fdmon_ref(ctx);
+
+	if (types & kCFFileDescriptorReadCallBack)
+		ctx->readcb(ctx, ctx->arg);
+
+	if (types & kCFFileDescriptorWriteCallBack)
+		ctx->writecb(ctx, ctx->arg);
+
+	/* Callbacks are one-shot only; re-enable the next one(s) here */
+	fdmon_set_enabled_callbacks(ctx);
+
+	fdmon_unref(ctx);
+}
+
+struct fdmon_ctx* fdmon_register_fd(int fd, fdmon_callback_t readcb,
+                                    fdmon_callback_t writecb, void* arg)
+{
+	CFFileDescriptorContext fdctx = {
+		.version = 0,
+		.retain = NULL,
+		.release = NULL,
+		.copyDescription = NULL,
+	};
+	struct fdmon_ctx* ctx = xmalloc(sizeof(*ctx));
+
+	fdctx.info = ctx;
+
+	ctx->fd = fd;
+	ctx->readcb = readcb;
+	ctx->writecb = writecb;
+	ctx->arg = arg;
+	ctx->flags = 0;
+	ctx->refcount = 1;
+	ctx->fdref = CFFileDescriptorCreate(kCFAllocatorDefault, ctx->fd, false,
+	                                    fdmon_callback, &fdctx);
+
+	if (!ctx->fdref) {
+		elog("CFFileDescriptorCreate() failed\n");
+		abort();
+	}
+
+	ctx->rlsrc = CFFileDescriptorCreateRunLoopSource(kCFAllocatorDefault,
+	                                                 ctx->fdref, 0);
+	if (!ctx->rlsrc) {
+		elog("CFFileDescriptorCreateRunLoopSource() failed\n");
+		abort();
+	}
+
+	CFRunLoopAddSource(CFRunLoopGetMain(), ctx->rlsrc, kCFRunLoopCommonModes);
+
+	return ctx;
+}
+
+void fdmon_unregister(struct fdmon_ctx* ctx)
+{
+	fdmon_unmonitor(ctx, FM_READ|FM_WRITE);
+	fdmon_unref(ctx);
+}
+
+void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
+{
+	if (flags & ~(FM_READ|FM_WRITE)) {
+		elog("invalid fdmon flags: %u\n", flags);
+		abort();
+	}
+
+	ctx->flags |= flags;
+
+	fdmon_set_enabled_callbacks(ctx);
+}
+
+void fdmon_unmonitor(struct fdmon_ctx* ctx, uint32_t flags)
+{
+	if (flags & ~(FM_READ|FM_WRITE)) {
+		elog("invalid fdmon flags: %u\n", flags);
+		abort();
+	}
+
+	ctx->flags &= ~flags;
+
+	fdmon_set_enabled_callbacks(ctx);
+}
+
+struct timerinfo {
+	CFRunLoopTimerRef timer;
+	void (*cbfn)(void* arg);
+	void* cbarg;
+};
+
+static void timer_callback(CFRunLoopTimerRef timer, void* info)
+{
+	struct timerinfo* ti = info;
+
+	ti->cbfn(ti->cbarg);
+
+	CFRunLoopRemoveTimer(CFRunLoopGetMain(), ti->timer, kCFRunLoopCommonModes);
+	CFRelease(ti->timer);
+}
+
+void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+{
+	struct timerinfo* ti;
+	CFAbsoluteTime firetime;
+	CFRunLoopTimerContext timer_ctx = {
+		.version = 0,
+		.retain = NULL,
+		.release = NULL,
+		.copyDescription = NULL,
+	};
+
+	firetime = CFAbsoluteTimeGetCurrent() + ((CFAbsoluteTime)delay / 1000000.0);
+
+	ti = xmalloc(sizeof(*ti));
+
+	timer_ctx.info = ti;
+	ti->cbfn = fn;
+	ti->cbarg = arg;
+	ti->timer = CFRunLoopTimerCreate(kCFAllocatorDefault, firetime, 0, 0, 0,
+	                                 timer_callback, &timer_ctx);
+
+	CFRunLoopAddTimer(CFRunLoopGetMain(), ti->timer, kCFRunLoopCommonModes);
+}
+
+static void check_assistive_device_access(void)
+{
+#ifdef MAC_OS_X_VERSION_10_9
+	const void* axdictkeys[] = { (void*)kAXTrustedCheckOptionPrompt, };
+	const void* axdictvals[] = { (void*)kCFBooleanTrue, };
+	CFDictionaryRef axdict = CFDictionaryCreate(NULL, axdictkeys, axdictvals, 1, NULL, NULL);
+
+	if (!axdict) {
+		elog("failed to create CFDictionaryRef\n");
+		abort();
+	}
+
+
+	if (!AXIsProcessTrustedWithOptions(axdict)) {
+		elog("Not trusted for assistive device access.\n");
+		/*
+		 * Annoyingly, the dialog AXIsProcessTrustedWithOptions() pops
+		 * up happens asynchronously, and the API doesn't offer any
+		 * way to make sure it appears before the original process
+		 * (this code here) exits, so here we just sleep while it
+		 * (hopefully) pops up its little window, though of course the
+		 * sleep time is an arbitrary made-up number (because what
+		 * else can you do when there's an unavoidable race condition
+		 * built in to the system library?).
+		 */
+		elog("And here we sleep asynchronously, hoping Apple's stupid API has "
+		     "popped up the message window before we exit...\n");
+		sleep(5);
+		elog("(Giving up and exiting.)\n");
+		exit(1);
+	}
+#else
+	if (!AXAPIEnabled()) {
+		elog("Assistive device access disabled, can't access keyboard events.\n");
+		elog("(You can enable this in the Accessibility pane of System Preferences.\n)");
+		exit(1);
+	}
+#endif
+}
+
+#define MODFLAG_MASK (kCGEventFlagMaskShift|kCGEventFlagMaskControl\
+                      |kCGEventFlagMaskAlternate|kCGEventFlagMaskCommand)
+
+static void handle_keyevent(CGEventRef ev, pressrel_t pr)
+{
+	CGKeyCode keycode = CGEventGetIntegerValueField(ev, kCGKeyboardEventKeycode);
+	keycode_t etkc = cgkeycode_to_etkeycode(keycode);
+
+	assert(is_remote(focused_node));
+
+	send_keyevent(focused_node->remote, etkc, pr);
+}
+
+static void handle_flagschanged(CGEventFlags oldflags, CGEventFlags newflags)
+{
+	int i;
+	pressrel_t pr;
+	CGEventFlags changed = oldflags ^ newflags;
+
+	assert(is_remote(focused_node));
+
+	for (i = 0; i < osx_modifiers.num; i++) {
+		if (osx_modifiers.keys[i].mask & changed) {
+			pr = (osx_modifiers.keys[i].mask & oldflags) ? PR_RELEASE : PR_PRESS;
+			send_keyevent(focused_node->remote, osx_modifiers.keys[i].etkey, pr);
+		}
+	}
+}
+
+static void handle_grabbed_mousemove(CGEventRef ev)
+{
+	int32_t dx, dy;
+
+	dx = CGEventGetIntegerValueField(ev, kCGMouseEventDeltaX);
+	dy = CGEventGetIntegerValueField(ev, kCGMouseEventDeltaY);
+
+	assert(is_remote(focused_node));
+
+	send_moverel(focused_node->remote, dx, dy);
+
+	set_mousepos_silent(screen_center);
+}
+
+static void handle_local_mousemove(CGEventRef ev)
+{
+	CGPoint loc = CGEventGetLocation(ev);
+
+	/* FIXME: don't trigger if mouse buttons held */
+	if (mousepos_handler)
+		mousepos_handler((struct xypoint){ .x = cground(loc.x), .y = cground(loc.y), });
+}
+
+static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CGEventRef ev,
+                                 void* arg)
+{
+	static uint64_t known_unknowns = 0; /* waxing Rumsfeldian... */
+	uint32_t modmask, keycode;
+	CGEventFlags old_modflags = modflags, evflags = CGEventGetFlags(ev);
+
+	modflags = evflags;
+
+	if (evtype == kCGEventKeyDown || evtype == kCGEventKeyUp) {
+		keycode = CGEventGetIntegerValueField(ev, kCGKeyboardEventKeycode);
+		modmask = evflags & MODFLAG_MASK;
+		if ((evtype == kCGEventKeyDown ? do_hotkey : find_hotkey)(keycode, modmask))
+			return NULL;
+	}
+
+	if (evtype == kCGEventMouseMoved || evtype == kCGEventLeftMouseDragged
+	    || evtype == kCGEventRightMouseDragged || evtype == kCGEventOtherMouseDragged) {
+		if (is_remote(focused_node)) {
+			handle_grabbed_mousemove(ev);
+			return NULL;
+		} else {
+			handle_local_mousemove(ev);
+			return ev;
+		}
+	}
+
+	if (is_master(focused_node))
+		return ev;
+
+	switch (evtype) {
+	case kCGEventKeyDown:
+		handle_keyevent(ev, PR_PRESS);
+		break;
+
+	case kCGEventKeyUp:
+		handle_keyevent(ev, PR_RELEASE);
+		break;
+
+	case kCGEventLeftMouseDown:
+		send_clickevent(focused_node->remote, MB_LEFT, PR_PRESS);
+		break;
+
+	case kCGEventLeftMouseUp:
+		send_clickevent(focused_node->remote, MB_LEFT, PR_RELEASE);
+		break;
+
+	case kCGEventRightMouseDown:
+		send_clickevent(focused_node->remote, MB_RIGHT, PR_PRESS);
+		break;
+
+	case kCGEventRightMouseUp:
+		send_clickevent(focused_node->remote, MB_RIGHT, PR_RELEASE);
+		break;
+
+	case kCGEventOtherMouseDown:
+		send_clickevent(focused_node->remote, MB_CENTER, PR_PRESS);
+		break;
+
+	case kCGEventOtherMouseUp:
+		send_clickevent(focused_node->remote, MB_CENTER, PR_RELEASE);
+		break;
+
+	case kCGEventScrollWheel:
+		break;
+
+	case kCGEventFlagsChanged:
+		handle_flagschanged(old_modflags, modflags);
+		break;
+
+	default:
+		if ((evtype < (sizeof(known_unknowns) * CHAR_BIT) - 1)
+		    && !(known_unknowns & (1ULL << evtype))) {
+			elog("Warning: CGEvent type %u unknown\n", evtype);
+			known_unknowns |= 1ULL << evtype;
+		}
+		break;
+	}
+
+	return NULL;
+}
+
+static void setup_event_tap(void)
+{
+	CFMachPortRef evtapport;
+	CFRunLoopSourceRef tapsrc;
+
+	check_assistive_device_access();
+
+	evtapport = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap,
+	                             kCGEventTapOptionDefault, kCGEventMaskForAllEvents,
+	                             evtap_callback, NULL);
+	if (!evtapport) {
+		elog("Can't create event tap!\n");
+		abort();
+	}
+
+	tapsrc = CFMachPortCreateRunLoopSource(NULL, evtapport, 0);
+	if (!tapsrc) {
+		elog("CFMachPortCreateRunLoopSource() failed\n");
+		abort();
+	}
+
+	CFRunLoopAddSource(CFRunLoopGetMain(), tapsrc, kCFRunLoopCommonModes);
+
+	/* CFRunLoopAddSource() retains tapsrc, so we release it here */
+	CFRelease(tapsrc);
+}
+
+void run_event_loop(void)
+{
+	if (opmode == MASTER)
+		setup_event_tap();
+
+	CFRunLoopRun();
 }

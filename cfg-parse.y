@@ -59,7 +59,7 @@ static struct remote* new_uninit_remote(void)
 	struct remote* rmt = xcalloc(sizeof(*rmt));
 
 	rmt->sshpid = -1;
-	rmt->msgchan.send_fd = rmt->msgchan.recv_fd = -1;
+	rmt->msgchan.send.fd = rmt->msgchan.recv.fd = -1;
 	rmt->state = CS_NEW;
 	rmt->params = new_kvmap();
 	rmt->node.remote = rmt;

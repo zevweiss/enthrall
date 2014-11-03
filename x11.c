@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <time.h>
 #include <limits.h>
 #include <math.h>
@@ -19,7 +20,7 @@
 
 #include "proto.h"
 
-static Display* xdisp;
+static Display* xdisp = NULL;
 static Window xrootwin;
 static Window xwin;
 static Pixmap cursor_pixmap;
@@ -64,6 +65,15 @@ struct xypoint screen_center;
 
 /* Handler to fire when mouse edge state changes */
 static mousepos_handler_t* mousepos_handler;
+
+struct scheduled_call {
+	void (*fn)(void* arg);
+	void* arg;
+	uint64_t calltime;
+	struct scheduled_call* next;
+};
+
+static struct scheduled_call* scheduled_calls;
 
 struct xhotkey {
 	KeyCode key;
@@ -410,6 +420,7 @@ static void xrr_init(void)
 static void xrr_exit(void)
 {
 	int i;
+	struct scheduled_call* sc;
 
 	for (i = 0; i < xrr.resources->ncrtc; i++) {
 		XRRFreeGamma(xrr.crtc_gammas[i].orig);
@@ -419,6 +430,12 @@ static void xrr_exit(void)
 
 	XRRFreeScreenResources(xrr.resources);
 	XRRFreeScreenConfigInfo(xrr.config);
+
+	while (scheduled_calls) {
+		sc = scheduled_calls;
+		scheduled_calls = sc->next;
+		xfree(sc);
+	}
 }
 
 /*
@@ -518,7 +535,7 @@ static void request_window_events(Window w)
 	XSetErrorHandler(prev_errhandler);
 }
 
-int platform_init(int* fd, mousepos_handler_t* mouse_handler)
+int platform_init(mousepos_handler_t* mouse_handler)
 {
 	unsigned int i;
 	Atom atom;
@@ -594,14 +611,14 @@ int platform_init(int* fd, mousepos_handler_t* mouse_handler)
 
 	xrr_init();
 
-	*fd = XConnectionNumber(xdisp);
-
 	return 0;
 }
 
 void platform_exit(void)
 {
 	struct xhotkey* hk;
+
+	set_display_brightness(1.0);
 
 	xrr_exit();
 	XFreeCursor(xdisp, xcursor_blank);
@@ -890,7 +907,7 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	send_keyevent(focused_node->remote, kc, pr);
 }
 
-static void handle_grabbed_mousemov(XMotionEvent* mev)
+static void handle_grabbed_mousemove(XMotionEvent* mev)
 {
 	if (mev->x_root == screen_center.x
 	    && mev->y_root == screen_center.y)
@@ -920,8 +937,8 @@ static void handle_event(XEvent* ev)
 
 	switch (ev->type) {
 	case MotionNotify:
-		if (focused_node->remote)
-			handle_grabbed_mousemov(&ev->xmotion);
+		if (is_remote(focused_node))
+			handle_grabbed_mousemove(&ev->xmotion);
 		else
 			handle_local_mousemove(&ev->xmotion);
 		break;
@@ -1122,4 +1139,210 @@ void set_display_brightness(float f)
 		XRRSetCrtcGamma(xdisp, xrr.resources->crtcs[i], xrr.crtc_gammas[i].alt);
 	}
 	XFlush(xdisp);
+}
+
+void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+{
+	struct scheduled_call* call;
+	struct scheduled_call** prevnext;
+	struct scheduled_call* newcall = xmalloc(sizeof(*newcall));
+
+	newcall->fn = fn;
+	newcall->arg = arg;
+	newcall->calltime = get_microtime() + delay;
+
+	for (prevnext = &scheduled_calls, call = *prevnext;
+	     call;
+	     prevnext = &call->next, call = call->next) {
+		if (newcall->calltime < call->calltime)
+			break;
+	}
+
+	newcall->next = call;
+	*prevnext = newcall;
+}
+
+struct fdmon_ctx {
+	int fd;
+	fdmon_callback_t readcb, writecb;
+	void* arg;
+	uint32_t flags;
+	int refcount;
+
+	struct fdmon_ctx* next;
+	struct fdmon_ctx* prev;
+};
+
+static struct {
+	struct fdmon_ctx* head;
+	struct fdmon_ctx* tail;
+} monitored_fds = {
+	.head = NULL,
+	.tail = NULL,
+};
+
+struct fdmon_ctx* fdmon_register_fd(int fd, fdmon_callback_t readcb,
+                                    fdmon_callback_t writecb, void* arg)
+{
+	struct fdmon_ctx* ctx = xmalloc(sizeof(*ctx));
+
+	ctx->fd = fd;
+	ctx->readcb = readcb;
+	ctx->writecb = writecb;
+	ctx->arg = arg;
+	ctx->flags = 0;
+	ctx->refcount = 1;
+
+	ctx->next = monitored_fds.head;
+	if (ctx->next)
+		ctx->next->prev = ctx;
+	monitored_fds.head = ctx;
+
+	ctx->prev = NULL;
+
+	if (!monitored_fds.tail)
+		monitored_fds.tail = ctx;
+
+	return ctx;
+}
+
+static void fdmon_unref(struct fdmon_ctx* ctx)
+{
+	assert(ctx->refcount > 0);
+	ctx->refcount -= 1;
+
+	if (ctx->refcount)
+		return;
+
+	if (!ctx->prev)
+		monitored_fds.head = ctx->next;
+
+	if (!ctx->next)
+		monitored_fds.tail = ctx->prev;
+
+	if (ctx->next)
+		ctx->next->prev = ctx->prev;
+
+	if (ctx->prev)
+		ctx->prev->next = ctx->next;
+
+	xfree(ctx);
+}
+
+static void fdmon_ref(struct fdmon_ctx* ctx)
+{
+	assert(ctx->refcount > 0);
+	ctx->refcount += 1;
+}
+
+void fdmon_unregister(struct fdmon_ctx* ctx)
+{
+	fdmon_unmonitor(ctx, FM_READ|FM_WRITE);
+	fdmon_unref(ctx);
+}
+
+void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
+{
+	if (flags & ~(FM_READ|FM_WRITE)) {
+		elog("invalid fdmon flags: %u\n", flags);
+		abort();
+	}
+
+	ctx->flags |= flags;
+}
+
+void fdmon_unmonitor(struct fdmon_ctx* ctx, uint32_t flags)
+{
+	if (flags & ~(FM_READ|FM_WRITE)) {
+		elog("invalid fdmon flags: %u\n", flags);
+		abort();
+	}
+
+	ctx->flags &= ~flags;
+}
+
+static void run_scheduled_calls(uint64_t when)
+{
+	struct scheduled_call* call;
+
+	while (scheduled_calls && scheduled_calls->calltime <= when) {
+		call = scheduled_calls;
+		scheduled_calls = call->next;
+		call->fn(call->arg);
+		xfree(call);
+	}
+}
+
+static struct timeval* get_select_timeout(struct timeval* tv, uint64_t now_us)
+{
+	uint64_t maxwait_us;
+
+	if (scheduled_calls) {
+		maxwait_us = scheduled_calls->calltime - now_us;
+		tv->tv_sec = maxwait_us / 1000000;
+		tv->tv_usec = maxwait_us % 1000000;
+		return tv;
+	} else {
+		return NULL;
+	}
+}
+
+static void handle_fds(void)
+{
+	int status, nfds = 0;
+	fd_set rfds, wfds;
+	struct timeval sel_wait;
+	uint64_t now_us;
+	struct fdmon_ctx* mfd;
+	struct fdmon_ctx* next_mfd;
+	int xfd = xdisp ? XConnectionNumber(xdisp) : -1;
+
+	FD_ZERO(&rfds);
+	FD_ZERO(&wfds);
+
+	now_us = get_microtime();
+
+	run_scheduled_calls(now_us);
+
+	if (xfd >= 0)
+		fdset_add(xfd, &rfds, &nfds);
+
+	for (mfd = monitored_fds.head; mfd; mfd = mfd->next) {
+		if (mfd->flags & FM_READ)
+			fdset_add(mfd->fd, &rfds, &nfds);
+		if (mfd->flags & FM_WRITE)
+			fdset_add(mfd->fd, &wfds, &nfds);
+	}
+
+	status = select(nfds, &rfds, &wfds, NULL, get_select_timeout(&sel_wait, now_us));
+	if (status < 0 && errno != EINTR) {
+		perror("select");
+		exit(1);
+	}
+
+	for (mfd = monitored_fds.head; mfd; mfd = next_mfd) {
+		/*
+		 * Callbacks could unregister mfd, so we ref/unref it around
+		 * the body of this loop
+		 */
+		fdmon_ref(mfd);
+
+		if ((mfd->flags & FM_READ) && FD_ISSET(mfd->fd, &rfds))
+			mfd->readcb(mfd, mfd->arg);
+
+		if ((mfd->flags & FM_WRITE) && FD_ISSET(mfd->fd, &wfds))
+			mfd->writecb(mfd, mfd->arg);
+
+		next_mfd = mfd->next;
+		fdmon_unref(mfd);
+	}
+
+	if (xfd >= 0 && FD_ISSET(xfd, &rfds))
+		process_events();
+}
+
+void run_event_loop(void)
+{
+	for (;;)
+		handle_fds();
 }

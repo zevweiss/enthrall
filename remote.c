@@ -68,103 +68,59 @@ static void handle_message(const struct message* msg)
 	}
 }
 
-static void handle_fds(int platform_event_fd)
+static void handle_setup_msg(const struct message* msg)
 {
-	int status, nfds = 0;
-	fd_set rfds, wfds;
-	struct message msg;
-
-	FD_ZERO(&rfds);
-	FD_ZERO(&wfds);
-
-	fdset_add(stdio_msgchan.recv_fd, &rfds, &nfds);
-
-	if (mc_have_outbound_data(&stdio_msgchan))
-		fdset_add(stdio_msgchan.send_fd, &wfds, &nfds);
-
-	if (platform_event_fd >= 0)
-		fdset_add(platform_event_fd, &rfds, &nfds);
-
-	status = select(nfds, &rfds, &wfds, NULL, NULL);
-	if (status < 0 && errno != EINTR) {
-		elog("select() failed: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	if (FD_ISSET(stdio_msgchan.send_fd, &wfds)) {
-		status = send_message(&stdio_msgchan);
-		if (status < 0)
-			exit(1);
-		else
-			assert(status > 0);
-	}
-
-	if (platform_event_fd >= 0 && FD_ISSET(platform_event_fd, &rfds))
-		process_events();
-
-	if (FD_ISSET(stdio_msgchan.recv_fd, &rfds)) {
-		status = recv_message(&stdio_msgchan, &msg);
-		if (status < 0) {
-			elog("failed to receive valid message\n");
-			shutdown_remote();
-			exit(1);
-		} else if (status > 0) {
-			handle_message(&msg);
-			if (msg.extra.len)
-				xfree(msg.extra.buf);
-		}
-	}
-}
-
-void run_remote(void)
-{
-	int platform_event_fd;
-	struct message setupmsg;
 	struct message* readymsg;
 
-	/*
-	 * Seems unlikely that sending log messages is going to work if some
-	 * of these early setup steps failed, but I guess we might as well
-	 * try...
-	 */
-
-	if (read_message(STDIN_FILENO, &setupmsg)) {
-		elog("failed to receive setup message\n");
+	if (msg->type != MT_SETUP) {
+		elog("unexpected message type %u instead of SETUP\n", msg->type);
 		exit(1);
 	}
 
-	if (setupmsg.type != MT_SETUP) {
-		elog("unexpected message type %u instead of SETUP\n", setupmsg.type);
+	if (msg->setup.prot_vers != PROT_VERSION) {
+		elog("unsupported protocol version %d\n", msg->setup.prot_vers);
 		exit(1);
 	}
 
-	if (setupmsg.setup.prot_vers != PROT_VERSION) {
-		elog("unsupported protocol version %d\n", setupmsg.setup.prot_vers);
-		exit(1);
-	}
-
-	remote_params = unflatten_kvmap(setupmsg.extra.buf, setupmsg.extra.len);
+	remote_params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
 	if (!remote_params) {
 		elog("failed to unflatted remote-params kvmap\n");
 		exit(1);
 	}
 
-	xfree(setupmsg.extra.buf);
-
-	if (platform_init(&platform_event_fd, NULL) < 0) {
+	if (platform_init(NULL) < 0) {
 		elog("platform_init() failed\n");
 		exit(1);
 	}
 
-	set_fd_nonblock(STDIN_FILENO, 1);
-	set_fd_nonblock(STDOUT_FILENO, 1);
-
-	mc_init(&stdio_msgchan, STDOUT_FILENO, STDIN_FILENO);
-
 	readymsg = new_message(MT_READY);
 	get_screen_dimensions(&readymsg->ready.screendim);
 	mc_enqueue_message(&stdio_msgchan, readymsg);
+}
 
-	for (;;)
-		handle_fds(platform_event_fd);
+static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
+{
+	static int initialized = 0;
+
+	if (!initialized) {
+		handle_setup_msg(msg);
+		initialized = 1;
+	} else {
+		handle_message(msg);
+	}
+}
+
+static void mc_err_cb(struct msgchan* mc, void* arg)
+{
+	elog("msgchan error, remote terminating\n");
+	shutdown_remote();
+	exit(1);
+}
+
+void run_remote(void)
+{
+	mc_init(&stdio_msgchan, STDOUT_FILENO, STDIN_FILENO,
+	        mc_read_cb, mc_err_cb, NULL);
+
+	run_event_loop();
 }

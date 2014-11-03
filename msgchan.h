@@ -6,13 +6,28 @@
 #define MSGCHAN_H
 
 #include "proto.h"
+#include "events.h"
+
+struct msgchan;
+
+typedef void (*mc_recv_cb_t)(struct msgchan* chan, struct message* msg, void* arg);
+typedef void (*mc_err_cb_t)(struct msgchan* chan, void* arg);
 
 struct msgchan {
-	int send_fd, recv_fd;
+	struct {
+		int fd;
+		struct fdmon_ctx* mon;
+	} send, recv;
 
 	/* For buffering partial inbound & outbound messages */
 	struct partrecv recv_msgbuf;
 	struct partsend send_msgbuf;
+
+	struct {
+		mc_recv_cb_t recv;
+		mc_err_cb_t err;
+		void* arg;
+	} cb;
 
 	struct {
 		struct message* head;
@@ -24,30 +39,9 @@ struct msgchan {
 void mc_clear(struct msgchan* mc);
 
 int mc_enqueue_message(struct msgchan* mc, struct message* msg);
-struct message* mc_dequeue_message(struct msgchan* mc);
 
-int send_message(struct msgchan* mc);
-int recv_message(struct msgchan* mc, struct message* msg);
-
-static inline int mc_have_outbound_data(const struct msgchan* mc)
-{
-	return mc->send_msgbuf.msgbuf || mc->sendqueue.head;
-}
-
-static inline void mc_init(struct msgchan* mc, int send_fd, int recv_fd)
-{
-	mc_clear(mc);
-	mc->send_fd = send_fd;
-	mc->recv_fd = recv_fd;
-}
-
-static inline void mc_close(struct msgchan* mc)
-{
-	mc_clear(mc);
-	close(mc->send_fd);
-	if (mc->recv_fd != mc->send_fd)
-		close(mc->recv_fd);
-}
-
+void mc_init(struct msgchan* mc, int send_fd, int recv_fd,
+             mc_recv_cb_t recv_cb, mc_err_cb_t err_cb, void* cb_arg);
+void mc_close(struct msgchan* mc);
 
 #endif /* MSGCHAN_H */

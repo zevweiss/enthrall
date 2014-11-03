@@ -31,14 +31,9 @@ static struct config* config;
 
 #define for_each_remote(r) for (r = config->remotes; r; r = r->next)
 
-struct scheduled_call {
-	void (*fn)(void* arg);
-	void* arg;
-	uint64_t calltime;
-	struct scheduled_call* next;
-};
-
-static struct scheduled_call* scheduled_calls;
+static void focus_master(void);
+static void setup_remote(struct remote* rmt);
+static void handle_message(struct remote* rmt, const struct message* msg);
 
 __printf(1, 2) void elog(const char* fmt, ...)
 {
@@ -52,70 +47,18 @@ __printf(1, 2) void elog(const char* fmt, ...)
 		msg = new_message(MT_LOGMSG);
 		msg->extra.buf = xvasprintf(fmt, va);
 		msg->extra.len = strlen(msg->extra.buf);
-
-		/*
-		 * There are a few potential error messages during setup
-		 * before we go O_NONBLOCK; handle both situations here.
-		 */
-		if (get_fd_nonblock(STDOUT_FILENO)) {
-			mc_enqueue_message(&stdio_msgchan, msg);
-		} else {
-			write_message(STDOUT_FILENO, msg);
-			free_message(msg);
-		}
+		mc_enqueue_message(&stdio_msgchan, msg);
 	}
 	va_end(va);
 }
-
-static void schedule_call(void (*fn)(void* arg), void* arg, uint64_t when)
-{
-	struct scheduled_call* call;
-	struct scheduled_call** prevnext;
-	struct scheduled_call* newcall = xmalloc(sizeof(*newcall));
-	newcall->fn = fn;
-	newcall->arg = arg;
-	newcall->calltime = when;
-
-	for (prevnext = &scheduled_calls, call = *prevnext;
-	     call;
-	     prevnext = &call->next, call = call->next) {
-		if (newcall->calltime < call->calltime)
-			break;
-	}
-
-	newcall->next = call;
-	*prevnext = newcall;
-}
-
-static void run_scheduled_calls(uint64_t when)
-{
-	struct scheduled_call* call;
-
-	while (scheduled_calls && scheduled_calls->calltime <= when) {
-		call = scheduled_calls;
-		scheduled_calls = call->next;
-		call->fn(call->arg);
-		xfree(call);
-	}
-}
-
-static void focus_master(void);
 
 static void disconnect_remote(struct remote* rmt)
 {
 	pid_t pid;
 	int status;
-	struct message* msg;
 
 	/* Close fds and reset send & receive queues/buffers */
 	mc_close(&rmt->msgchan);
-
-	/* Clear out scheduled messages */
-	while (rmt->scheduled_messages) {
-		msg = rmt->scheduled_messages;
-		rmt->scheduled_messages = msg->next;
-		free_message(msg);
-	}
 
 	/*
 	 * A note on signal choice here: initially this used SIGTERM (which
@@ -144,9 +87,16 @@ static void disconnect_remote(struct remote* rmt)
 #define MAX_RECONNECT_INTERVAL ((30 * 1000 * 1000) / RECONNECT_INTERVAL_UNIT)
 #define MAX_RECONNECT_ATTEMPTS 10
 
+static void reconnect_remote_cb(void* arg)
+{
+	struct remote* rmt = arg;
+
+	setup_remote(rmt);
+}
+
 static void fail_remote(struct remote* rmt, const char* reason)
 {
-	uint64_t tmp, lshift;
+	uint64_t tmp, lshift, next_reconnect_delay;
 
 	elog("disconnecting remote '%s': %s\n", rmt->node.name, reason);
 	disconnect_remote(rmt);
@@ -169,7 +119,9 @@ static void fail_remote(struct remote* rmt, const char* reason)
 	if (tmp > MAX_RECONNECT_INTERVAL)
 		tmp = MAX_RECONNECT_INTERVAL;
 
-	rmt->next_reconnect_time = get_microtime() + (tmp * RECONNECT_INTERVAL_UNIT);
+	next_reconnect_delay = tmp * RECONNECT_INTERVAL_UNIT;
+
+	schedule_call(reconnect_remote_cb, rmt, next_reconnect_delay);
 }
 
 static void enqueue_message(struct remote* rmt, struct message* msg)
@@ -178,20 +130,26 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 		fail_remote(rmt, "send backlog exceeded");
 }
 
-static void schedule_message(struct remote* rmt, struct message* newmsg)
-{
+struct scheduled_message {
+	struct remote* rmt;
 	struct message* msg;
-	struct message** prevnext;
+};
 
-	for (prevnext = &rmt->scheduled_messages, msg = *prevnext;
-	     msg;
-	     prevnext = &msg->next, msg = msg->next) {
-		if (newmsg->sendtime < msg->sendtime)
-			break;
-	}
+static void scheduled_message_cb(void* arg)
+{
+	struct scheduled_message* sm = arg;
 
-	newmsg->next = msg;
-	*prevnext = newmsg;
+	enqueue_message(sm->rmt, sm->msg);
+
+	xfree(sm);
+}
+
+static void schedule_message(struct remote* rmt, struct message* newmsg, uint64_t delay)
+{
+	struct scheduled_message* sm = xmalloc(sizeof(*sm));
+	sm->rmt = rmt;
+	sm->msg = newmsg;
+	schedule_call(scheduled_message_cb, sm, delay);
 }
 
 #define SSH_DEFAULT(type, name) \
@@ -268,6 +226,20 @@ static void exec_remote_shell(const struct remote* rmt)
 	exit(1);
 }
 
+static void rmt_mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
+{
+	struct remote* rmt = arg;
+
+	handle_message(rmt, msg);
+}
+
+static void rmt_mc_err_cb(struct msgchan* mc, void* arg)
+{
+	struct remote* rmt = arg;
+
+	fail_remote(rmt, "msgchan error");
+}
+
 static void setup_remote(struct remote* rmt)
 {
 	int sockfds[2];
@@ -297,13 +269,17 @@ static void setup_remote(struct remote* rmt)
 		if (close(sockfds[0]))
 			perror("close");
 
+		if (close(sockfds[1]))
+			perror("close");
+
 		exec_remote_shell(rmt);
 	}
 
 	set_fd_nonblock(sockfds[0], 1);
 	set_fd_cloexec(sockfds[0], 1);
 
-	mc_init(&rmt->msgchan, sockfds[0], sockfds[0]);
+	mc_init(&rmt->msgchan, sockfds[0], sockfds[0], rmt_mc_read_cb,
+	        rmt_mc_err_cb, rmt);
 
 	if (close(sockfds[1]))
 		perror("close");
@@ -554,7 +530,7 @@ static void set_brightness_cb(void* arg)
 	xfree(fp);
 }
 
-static void schedule_brightness_change(struct node* node, float f, uint64_t when)
+static void schedule_brightness_change(struct node* node, float f, uint64_t delay)
 {
 	struct message* msg;
 	float* fp;
@@ -562,12 +538,11 @@ static void schedule_brightness_change(struct node* node, float f, uint64_t when
 	if (is_remote(node)) {
 		msg = new_message(MT_SETBRIGHTNESS);
 		msg->setbrightness.brightness = f;
-		msg->sendtime = when;
-		schedule_message(node->remote, msg);
+		schedule_message(node->remote, msg, delay);
 	} else {
 		fp = xmalloc(sizeof(*fp));
 		*fp = f;
-		schedule_call(set_brightness_cb, fp, when);
+		schedule_call(set_brightness_cb, fp, delay);
 	}
 }
 
@@ -576,16 +551,16 @@ static void transition_brightness(struct node* node, float from, float to,
 {
 	int i;
 	float frac, level;
-	uint64_t time, now_us = get_microtime();
+	uint64_t delay;
 
 	set_node_display_brightness(node, from);
 	for (i = 1; i < steps; i++) {
 		frac = (float)i / (float)steps;
-		time = now_us + (uint64_t)(frac * (float)duration);
+		delay = (uint64_t)(frac * (float)duration);
 		level = from + (frac * (to - from));
-		schedule_brightness_change(node, level, time);
+		schedule_brightness_change(node, level, delay);
 	}
-	schedule_brightness_change(node, to, now_us + duration);
+	schedule_brightness_change(node, to, delay);
 }
 
 static void indicate_switch(struct node* from, struct node* to)
@@ -705,7 +680,6 @@ static void free_remote(struct remote* rmt)
 static void shutdown_master(void)
 {
 	struct remote* rmt;
-	struct scheduled_call* sc;
 	struct hotkey* hk;
 	struct link* ln;
 
@@ -714,12 +688,6 @@ static void shutdown_master(void)
 		config->remotes = rmt->next;
 		disconnect_remote(rmt);
 		free_remote(rmt);
-	}
-
-	while (scheduled_calls) {
-		sc = scheduled_calls;
-		scheduled_calls = sc->next;
-		xfree(sc);
 	}
 
 	while (config->hotkeys) {
@@ -744,7 +712,6 @@ static void shutdown_master(void)
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
 	struct remote* rmt;
-	uint64_t now_us;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
@@ -764,12 +731,11 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_RECONNECT:
-		now_us = get_microtime();
 		for_each_remote (rmt) {
-			if (rmt->state == CS_PERMFAILED)
-				rmt->state = CS_FAILED;
-			rmt->failcount = 0;
-			rmt->next_reconnect_time = now_us;
+			if (rmt->state == CS_PERMFAILED) {
+				rmt->failcount = 0;
+				setup_remote(rmt);
+			}
 		}
 		break;
 
@@ -999,142 +965,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	}
 }
 
-static void read_rmtdata(struct remote* rmt)
-{
-	int status;
-	struct message msg;
-
-	status = recv_message(&rmt->msgchan, &msg);
-	if (!status)
-		return;
-
-	if (status < 0) {
-		fail_remote(rmt, "failed to receive valid message");
-		return;
-	}
-
-	handle_message(rmt, &msg);
-
-	if (msg.extra.len)
-		xfree(msg.extra.buf);
-}
-
-static void write_rmtdata(struct remote* rmt)
-{
-	int status;
-
-	status = send_message(&rmt->msgchan);
-	if (status < 0)
-		fail_remote(rmt, "failed to send message");
-	else /* this function should only be called with pending send data */
-		assert(status > 0);
-}
-
-static inline int have_outbound_data(const struct remote* rmt)
-{
-	return mc_have_outbound_data(&rmt->msgchan);
-}
-
-/*
- * Check if the given remote is in a state that would be eligible for sending
- * or receiving messages.  (remote_live() is admittedly not a great name for
- * this, but I can't think of anything better at the moment.)
- */
-static inline int remote_live(const struct remote* rmt)
-{
-	return rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP;
-}
-
-static void enqueue_scheduled_messages(struct remote* rmt, uint64_t when)
-{
-	struct message* msg;
-
-	while (rmt->scheduled_messages && rmt->scheduled_messages->sendtime <= when) {
-		msg = rmt->scheduled_messages;
-		rmt->scheduled_messages = msg->next;
-		enqueue_message(rmt, msg);
-	}
-}
-
-static struct timeval* get_select_timeout(struct timeval* tv, uint64_t now_us)
-{
-	const struct remote* rmt;
-	uint64_t maxwait_us;
-	uint64_t next_scheduled_event = UINT64_MAX;
-
-	if (scheduled_calls && scheduled_calls->calltime < next_scheduled_event)
-		next_scheduled_event = scheduled_calls->calltime;
-
-	for_each_remote (rmt) {
-		if (rmt->state == CS_FAILED
-		    && rmt->next_reconnect_time < next_scheduled_event)
-			next_scheduled_event = rmt->next_reconnect_time;
-		else if (rmt->scheduled_messages
-		         && rmt->scheduled_messages->sendtime < next_scheduled_event)
-			next_scheduled_event = rmt->scheduled_messages->sendtime;
-	}
-
-	if (next_scheduled_event == UINT64_MAX)
-		return NULL;
-
-	maxwait_us = next_scheduled_event - now_us;
-	tv->tv_sec = maxwait_us / 1000000;
-	tv->tv_usec = maxwait_us % 1000000;
-	return tv;
-}
-
-static void handle_fds(int platform_event_fd)
-{
-	int status, nfds = 0;
-	fd_set rfds, wfds;
-	struct remote* rmt;
-	struct timeval sel_wait;
-	uint64_t now_us;
-
-	FD_ZERO(&rfds);
-	FD_ZERO(&wfds);
-
-	now_us = get_microtime();
-
-	run_scheduled_calls(now_us);
-
-	for_each_remote (rmt) {
-		if (rmt->state == CS_FAILED && rmt->next_reconnect_time < now_us)
-			setup_remote(rmt);
-
-		if (remote_live(rmt)) {
-			enqueue_scheduled_messages(rmt, now_us);
-			fdset_add(rmt->msgchan.recv_fd, &rfds, &nfds);
-			if (have_outbound_data(rmt))
-				fdset_add(rmt->msgchan.send_fd, &wfds, &nfds);
-		}
-	}
-
-	fdset_add(platform_event_fd, &rfds, &nfds);
-
-	status = select(nfds, &rfds, &wfds, NULL, get_select_timeout(&sel_wait, now_us));
-	if (status < 0 && errno != EINTR) {
-		perror("select");
-		exit(1);
-	}
-
-	for_each_remote (rmt) {
-		if (remote_live(rmt) && FD_ISSET(rmt->msgchan.recv_fd, &rfds))
-			read_rmtdata(rmt);
-
-		/*
-		 * read_rmtdata() might have changed the remote's status, so
-		 * check remote_live() again.
-		 */
-		if (remote_live(rmt) && FD_ISSET(rmt->msgchan.send_fd, &wfds))
-			write_rmtdata(rmt);
-	}
-
-	if (FD_ISSET(platform_event_fd, &rfds))
-		process_events();
-}
-
-void usage(FILE* out)
+static void usage(FILE* out)
 {
 	fprintf(out, "Usage: %s CONFIGFILE\n", progname);
 }
@@ -1146,7 +977,6 @@ int main(int argc, char** argv)
 	struct remote* rmt;
 	FILE* cfgfile;
 	struct stat st;
-	int platform_event_fd;
 
 	static const struct option options[] = {
 		{ "help", no_argument, NULL, 'h', },
@@ -1221,7 +1051,7 @@ int main(int argc, char** argv)
 	fclose(cfgfile);
 	config = &cfg;
 
-	if (platform_init(&platform_event_fd, mousepos_cb)) {
+	if (platform_init(mousepos_cb)) {
 		elog("platform_init failed\n");
 		exit(1);
 	}
@@ -1239,6 +1069,7 @@ int main(int argc, char** argv)
 	for_each_remote (rmt)
 		setup_remote(rmt);
 
-	for (;;)
-		handle_fds(platform_event_fd);
+	run_event_loop();
+
+	return 0;
 }
