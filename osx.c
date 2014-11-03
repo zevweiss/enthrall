@@ -1087,6 +1087,28 @@ static void handle_local_mousemove(CGEventRef ev)
 		mousepos_handler((struct xypoint){ .x = cground(loc.x), .y = cground(loc.y), });
 }
 
+/*
+ * This is kind of simple-minded in comparison to the level of detail
+ * available from the scroll-wheel CGEvent, but in practice all that extra
+ * information doesn't really translate to other systems very well, so here we
+ * are (this approach seems to work pretty acceptably).
+ */
+static void handle_scrollevent(CGEventRef ev)
+{
+	mousebutton_t mb;
+	double scroll_units;
+
+	scroll_units = CGEventGetDoubleValueField(ev, kCGScrollWheelEventFixedPtDeltaAxis1);
+
+	if (fabs(scroll_units) < 0.0001)
+		return;
+
+	mb = scroll_units < 0.0 ? MB_SCROLLDOWN : MB_SCROLLUP;
+
+	send_clickevent(focused_node->remote, mb, PR_PRESS);
+	send_clickevent(focused_node->remote, mb, PR_RELEASE);
+}
+
 static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CGEventRef ev,
                                  void* arg)
 {
@@ -1151,6 +1173,7 @@ static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CG
 		break;
 
 	case kCGEventScrollWheel:
+		handle_scrollevent(ev);
 		break;
 
 	case kCGEventFlagsChanged:
