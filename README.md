@@ -16,6 +16,23 @@ The machine with the keyboard and mouse attached is referred to as the
 installed; running it on the master connects to each remote over SSH
 and runs its installed version.
 
+### Requirements
+
+Both master and remote functionality should work on Linux and FreeBSD
+systems running X11 (porting to other *nixes shouldn't be terribly
+hard) as well as Mac OS X 10.8 and 10.9 (other versions untested).  To
+compile you'll need:
+
+ - GNU `make` (`gmake` on some systems)
+ - `flex` (2.5.35 and later known to work)
+ - `bison` 2.4 or later
+ - On X11 systems: XTest and XRandR extensions, `pkg-config`
+ - On Mac OS X: Xcode developer tools
+
+Unfortunately the version of bison provided by Apple on Mac OS X is
+2.3, which won't work.  MacPorts (and similar OSX package managers)
+should have newer versions available that will work, however.
+
 ### Installation
 
 Run `make`, then put the resulting `enthrall` binary wherever you like
@@ -24,23 +41,26 @@ Run `make`, then put the resulting `enthrall` binary wherever you like
 ### Setup
 
 You'll need to set up non-interactive (e.g. pubkey-based) SSH
-authentication between your master and your remotes so that `enthrall`
-can log in to each remote automatically.  Use `ssh-keygen` and
-`~/.ssh/authorized_keys` as normal for that.  If you'd like to lock
-things down a bit further, you can use a dedicated SSH key and a
-`command="..."` directive (set to wherever `enthrall` is installed on
-that host) on the relevant line of your `~/.ssh/authorized_keys` file
-to restrict that key for use only with `enthrall`.
+authentication between your master and your remotes (and have sshd
+running on each remote) so that `enthrall` can log in to each remote
+automatically.  Use `ssh-keygen` and `~/.ssh/authorized_keys` as
+normal for that.  If you'd like to lock things down a bit further, you
+can use a dedicated SSH key and a `command="..."` directive (set to
+wherever `enthrall` is installed on that host) on the relevant line of
+your `~/.ssh/authorized_keys` file to restrict that key for use only
+with `enthrall`.
 
 ### Usage
 
 Start `enthrall` from the master node with a single argument: the path
-to your config file.  It will connect to all defined remotes and start
-an instance of itself on each one.  You can then use hotkeys defined
-in your config file (or a mouse-gesture mechanism) to change which
-machine receives keyboard and mouse input.  See `example.conf` for a
-sample config file illustrating how various configuration options
-work.
+to your config file (if you want, you could even just put a
+`#!/path/to/enthrall` shebang line at the top of your config file,
+`chmod` it executable, and run it as a little script).  It will
+connect to all defined remotes and start an instance of itself on each
+one.  You can then use hotkeys defined in your config file (or a
+mouse-gesture mechanism) to change which machine receives keyboard and
+mouse input.  See `example.conf` for a sample config file illustrating
+how various configuration options work.
 
 In the event of errors (e.g. network connection drops), `enthrall`
 will attempt to automatically reconnect to any failed remotes, though
