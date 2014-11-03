@@ -73,9 +73,9 @@ static uint32_t num_displays;
 static void setup_gamma_table(struct gamma_table* gt, uint32_t size)
 {
 	gt->numents = size;
-	gt->red = xmalloc(size * sizeof(gt->red));
-	gt->green = xmalloc(size * sizeof(gt->green));
-	gt->blue = xmalloc(size * sizeof(gt->blue));
+	gt->red = xmalloc(size * sizeof(*gt->red));
+	gt->green = xmalloc(size * sizeof(*gt->green));
+	gt->blue = xmalloc(size * sizeof(*gt->blue));
 }
 
 static void clear_gamma_table(struct gamma_table* gt)
