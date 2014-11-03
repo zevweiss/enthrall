@@ -22,9 +22,10 @@ else
 	X11CFLAGS := $(shell pkg-config --cflags $(XSUBLIBS))
 	X11LIBS := $(shell pkg-config --libs $(XSUBLIBS))
 	LIBS += $(X11LIBS)
-	CFLAGS += -D_GNU_SOURCE $(X11CFLAGS)
+	CFLAGS += $(X11CFLAGS)
 
 	ifeq ($(OS),Linux)
+		CFLAGS += -D_GNU_SOURCE
 		LIBS += -lrt
 	endif
 endif
