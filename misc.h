@@ -129,9 +129,6 @@ void send_moverel(struct remote* rmt, int32_t dx, int32_t dy);
 void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr);
 void send_setbrightness(struct remote* rmt, float f);
 
-int read_all(int fd, void* buf, size_t len);
-int write_all(int fd, const void* buf, size_t len);
-
 int get_fd_nonblock(int fd);
 void set_fd_nonblock(int fd, int nb);
 void set_fd_cloexec(int fd, int ce);
