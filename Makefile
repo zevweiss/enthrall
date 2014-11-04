@@ -3,8 +3,14 @@ CC = cc
 FLEX = flex
 BISON = bison
 
-CFLAGS = -Wall -Werror -ggdb3
+CFLAGS = -Wall -Werror
 LIBS = -lm
+
+ifneq ($(DEBUG),)
+	CFLAGS += -ggdb3
+else
+	CFLAGS += -O2
+endif
 
 OS := $(shell uname -s)
 
