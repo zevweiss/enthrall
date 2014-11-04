@@ -560,7 +560,7 @@ static void transition_brightness(struct node* node, float from, float to,
 		level = from + (frac * (to - from));
 		schedule_brightness_change(node, level, delay);
 	}
-	schedule_brightness_change(node, to, delay);
+	schedule_brightness_change(node, to, duration);
 }
 
 static void indicate_switch(struct node* from, struct node* to)
