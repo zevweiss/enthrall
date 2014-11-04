@@ -213,13 +213,34 @@ void platform_exit(void)
 	}
 }
 
+/*
+ * There are, as far as I can see, two approaches to setting up global
+ * hotkeys.  One approach uses a global event tap and sniffs keyboard events
+ * searching for one that matches a bound hotkey (this is the one that's
+ * currently implemented and in use).  The other involves calling
+ * InstallApplicationEventHandler() and RegisterEventHotKey() -- to get the
+ * callbacks set up with these, however, we'd apparently need to use
+ * RunApplicationEventLoop() instead of CFRunLoops.  That API is deprecated,
+ * however (the declaration of RunApplicationEventLoop() is #ifdef'd out on
+ * 64-bit builds in the system headers, though the symbol is still present in
+ * the libraries so a manual declaration seems to work), and furthermore I
+ * don't know how (or if it's possible) to integrate the two different event
+ * loops, so I've stuck with the CFRunLoop/CGEventTap approach.  The
+ * pre-filtered direct callbacks provided by the RegisterEventHotKey()
+ * approach seems much nicer than manually filtering them out of the stream of
+ * all global keystrokes, so though I've left some vestiges of that code
+ * around "just in case"...
+ */
+#define EVENTTAP_HOTKEYS
+
 struct osxhotkey {
 	CGKeyCode keycode;
 	CGEventFlags modmask;
 	hotkey_callback_t callback;
 	void* arg;
-
+#ifndef EVENTTAP_HOTKEYS
 	EventHotKeyRef evref;
+#endif
 };
 
 static struct osxhotkey* hotkeys;
@@ -252,26 +273,6 @@ static struct osxhotkey* do_hotkey(uint32_t keycode, uint32_t modmask)
 
 	return hk;
 }
-
-/*
- * There are, as far as I can see, two approaches to setting up global
- * hotkeys.  One approach uses a global event tap and sniffs keyboard events
- * searching for one that matches a bound hotkey (this is the one that's
- * currently implemented and in use).  The other involves calling
- * InstallApplicationEventHandler() and RegisterEventHotKey() -- to get the
- * callbacks set up with these, however, we'd apparently need to use
- * RunApplicationEventLoop() instead of CFRunLoops.  That API is deprecated,
- * however (the declaration of RunApplicationEventLoop() is #ifdef'd out on
- * 64-bit builds in the system headers, though the symbol is still present in
- * the libraries so a manual declaration seems to work), and furthermore I
- * don't know how (or if it's possible) to integrate the two different event
- * loops, so I've stuck with the CFRunLoop/CGEventTap approach.  The
- * pre-filtered direct callbacks provided by the RegisterEventHotKey()
- * approach seems much nicer than manually filtering them out of the stream of
- * all global keystrokes, so I've left some vestiges of that code around "just
- * in case"...
- */
-#define EVENTTAP_HOTKEYS
 
 #ifndef EVENTTAP_HOTKEYS
 static EventHandlerUPP hotkey_handler_upp;

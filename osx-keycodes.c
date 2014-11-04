@@ -16,7 +16,7 @@
 
 /*
  * Which of these have 'nobackmap' set is a little hocus-pocus at the
- moment...would be nice to make in more sensible/uniform.
+ * moment...would be nice to make it a bit more sensible/uniform.
  */
 static struct {
 	CGKeyCode kc;
