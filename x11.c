@@ -769,7 +769,7 @@ int grab_inputs(void)
 	int status = XGrabKeyboard(xdisp, xrootwin, False, GrabModeAsync,
 	                           GrabModeAsync, CurrentTime);
 	if (status) {
-		elog("Failed to grab keyboard: %s", grab_failure_message(status));
+		elog("Failed to grab keyboard: %s\n", grab_failure_message(status));
 		return status;
 	}
 
@@ -778,7 +778,7 @@ int grab_inputs(void)
 
 	if (status) {
 		XUngrabKeyboard(xdisp, CurrentTime);
-		elog("Failed to grab pointer: %s", grab_failure_message(status));
+		elog("Failed to grab pointer: %s\n", grab_failure_message(status));
 		return status;
 	}
 
