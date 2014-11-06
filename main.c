@@ -244,11 +244,26 @@ static void setup_remote(struct remote* rmt)
 {
 	int sockfds[2];
 	struct message* setupmsg;
+	int sndbuf_sz;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfds)) {
 		perror("socketpair");
 		exit(1);
 	}
+
+	/*
+	 * If a remote goes offline, we want to detect it sooner rather than
+	 * later (which happens via ssh getting backed up, thus allowing our
+	 * send backlog to reach its limit), so we shrink our send-buffer size
+	 * on the socket we'll be sending messages through.  Granted, ssh's
+	 * network-facing socket probably still has a much larger send buffer,
+	 * so the effectiveness of this is likely to be pretty limited, but we
+	 * might as well try.
+	 */
+	sndbuf_sz = 1024;
+	if (setsockopt(sockfds[0], SOL_SOCKET, SO_SNDBUF, &sndbuf_sz,
+	               sizeof(sndbuf_sz)))
+		elog("setsockopt(SO_SNDBUF) failed: %s\n", strerror(errno));
 
 	rmt->sshpid = fork();
 	if (rmt->sshpid < 0) {
