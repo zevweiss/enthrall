@@ -301,26 +301,6 @@ int drain_msgbuf(int fd, struct partsend* ps)
 	return 1;
 }
 
-int write_message(int fd, const struct message* msg)
-{
-	int status;
-	struct partsend ps = {
-		.msgbuf = NULL,
-		.msg_len = 0,
-		.bytes_sent = 0,
-	};
-
-	unparse_message(msg, &ps);
-
-	do {
-		status = drain_msgbuf(fd, &ps);
-		if (status < 0)
-			return status;
-	} while (!status);
-
-	return 0;
-}
-
 /*
  * Wire format:
  *
@@ -411,26 +391,6 @@ void parse_message(struct partrecv* pr, struct message* msg)
 	xfree(pr->plbuf);
 	pr->plbuf = NULL;
 	pr->bytes_recvd = 0;
-}
-
-int read_message(int fd, struct message* msg)
-{
-	int status;
-	struct partrecv pr = {
-		.bytes_recvd = 0,
-		.plbuf = NULL,
-	};
-
-	do {
-		status = fill_msgbuf(fd, &pr);
-		if (status < 0)
-			return status;
-	} while (!status);
-
-	parse_message(&pr, msg);
-	xfree(pr.plbuf);
-
-	return 0;
 }
 
 struct message* new_message(msgtype_t type)

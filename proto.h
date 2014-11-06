@@ -133,9 +133,6 @@ struct partsend {
 struct message* new_message(msgtype_t type);
 void free_message(struct message* msg);
 
-int write_message(int fd, const struct message* msg);
-int read_message(int fd, struct message* msg);
-
 int fill_msgbuf(int fd, struct partrecv* pr);
 void parse_message(struct partrecv* pr, struct message* msg);
 
