@@ -701,7 +701,8 @@ static void shutdown_master(void)
 	while (config->remotes) {
 		rmt = config->remotes;
 		config->remotes = rmt->next;
-		disconnect_remote(rmt);
+		if (rmt->state == CS_CONNECTED || rmt->state == CS_SETTINGUP)
+			disconnect_remote(rmt);
 		free_remote(rmt);
 	}
 
