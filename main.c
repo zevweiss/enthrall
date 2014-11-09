@@ -175,6 +175,7 @@ static void exec_remote_shell(const struct remote* rmt)
 		"-oBatchMode=yes",
 		"-oServerAliveInterval=2",
 		"-oServerAliveCountMax=3",
+		"-oConnectTimeout=2",
 
 		/* placeholders */
 		NULL, /* -b */
