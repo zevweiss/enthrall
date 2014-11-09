@@ -606,10 +606,11 @@ static int64_t click_type(mousebutton_t btn, pressrel_t pr)
 
 void do_clickevent(mousebutton_t button, pressrel_t pr)
 {
-	CGEventType cgtype;
-	CGMouseButton cgbtn;
 	int32_t scrollamt;
 	CGEventRef ev;
+	/* superfluous initializations to silence warnings from dumb old compilers */
+	CGEventType cgtype = kCGEventNull;
+	CGMouseButton cgbtn = kCGMouseButtonLeft;
 
 	switch (button) {
 	case MB_LEFT:
