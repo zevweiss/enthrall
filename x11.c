@@ -12,6 +12,7 @@
 #include <X11/XKBlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/extensions/XInput2.h>
 
 #include "types.h"
 #include "misc.h"
@@ -41,6 +42,12 @@ static struct {
 	XRRScreenResources* resources;
 	struct crtc_gamma* crtc_gammas;
 } xrr;
+
+static struct {
+	int opcode;
+	int errbase;
+	int evbase;
+} xi2;
 
 static struct {
 	const char* name;
@@ -437,56 +444,72 @@ static void xrr_exit(void)
 	}
 }
 
-/*
- * Append to *wlist (an already-xmalloc()ed array of Windows) all children
- * (recursively) of the given window, updating *nwin to reflect the added
- * elements.  Returns 0 on success, non-zero on failure.
- */
-static int append_child_windows(Window parent, Window** wlist, unsigned int* nwin)
+static int xi2_init(void)
 {
-	int status;
-	unsigned int i, num_children;
-	Window root_ret, parent_ret;
-	Window* children;
+	Status status;
+	unsigned char rawmask[XIMaskLen(XI_LASTEVENT)];
+	int maj = 2, min = 0;
+	XIEventMask ximask;
 
-	if (!XQueryTree(xdisp, parent, &root_ret, &parent_ret,
-	                &children, &num_children)) {
-		xfree(*wlist);
-		*wlist = NULL;
-		*nwin = 0;
+	if (!XQueryExtension(xdisp, "XInputExtension", &xi2.opcode, &xi2.evbase,
+	                     &xi2.errbase)) {
+		elog("XInputExtension unavailable\n");
 		return -1;
 	}
 
-	assert(root_ret == xrootwin);
+	if (XIQueryVersion(xdisp, &maj, &min))
+		return -1;
 
-	*wlist = xrealloc(*wlist, (*nwin + num_children) * sizeof(**wlist));
-	memcpy(*wlist + *nwin, children, num_children * sizeof(**wlist));
-	*nwin += num_children;
+	/*
+	 * The Saga of Global Pointer-Tracking under X: a Tale of Woe.
+	 *
+	 * In order to enable mouse-switching, we need to be able to detect
+	 * any time the pointer hits a screen edge, and so need to receive
+	 * pointer motion events at all times.  The initial approach for this
+	 * consisted of retrieving a list of all windows via XQueryTree() at
+	 * initialization time and XSelectInput()ing all of them to request
+	 * delivery of pointer motion events, as well as SubstructureNotify
+	 * events to do the same for any children that pop up.
+	 *
+	 * This worked, mostly, but not always.  Due to a stupid interaction
+	 * between certain applications (Chrome/Chromium being an example at
+	 * hand) and X11, if no one else has requested pointer motion events
+	 * on a window and then we *do* (becoming the only client requesting
+	 * them), pointer motion events then stop propagating up the window
+	 * hierarchy, so said applications stop seeing them.  This manifests
+	 * itself, for example, as Chrome (at least as of version 38) not
+	 * changing its mouse pointer to the link-clicking hand icon when
+	 * mousing over a link.
+	 *
+	 * So we delve into XInput.  I was hoping that just switching out the
+	 * PointerMotion events for XI_Motion events would solve the problem,
+	 * but sadly it seems that even requesting XI_Motion events still
+	 * prevents such applications from receiving their motion events.
+	 *
+	 * So, as a last resort, we use XI_RawMotion events instead, which
+	 * thankfully are just sent to the root window, so we don't need to do
+	 * all the SubstructureNotify child-window tracking.  However, these
+	 * events are also...well, raw.  While this is probably pretty much
+	 * exactly what we want in the case where a remote is focused and
+	 * we're sending relative motion events over to it, in the case where
+	 * the master is focused and we're just trying to pick up on screen
+	 * edge events, it's really not helpful at all.  So, rather than try
+	 * to open-loop re-create the X server's logic in tracking the
+	 * effective logical absolute pointer position by summing up all the
+	 * little deltas the raw events give us (and probably doing a crappy
+	 * job of it), we instead just (inefficiently) call XQueryPointer() to
+	 * see what the server thinks every time we get one.  Sigh.  Ugly, but
+	 * at least it works, and doesn't seem to screw up other clients.
+	 */
 
-	for (i = 0; i < num_children; i++) {
-		status = append_child_windows(children[i], wlist, nwin);
-		if (status) {
-			XFree(children);
-			return status;
-		}
-	}
+	memset(rawmask, 0, sizeof(rawmask));
+	ximask.mask = rawmask;
+	ximask.mask_len = sizeof(rawmask);
+	ximask.deviceid = XIAllMasterDevices;
+	XISetMask(ximask.mask, XI_RawMotion);
+	status = XISelectEvents(xdisp, xrootwin, &ximask, 1);
 
-	XFree(children);
-
-	return 0;
-}
-
-/*
- * A non-atomic snapshot of global X window state; could possibly be made
- * atomic by bracketing it with XGrabServer()/XUngrabServer()...
- */
-static int get_all_xwindows(Window** wlist, unsigned int* nwin)
-{
-	*nwin = 1;
-	*wlist = xmalloc(*nwin * sizeof(**wlist));
-	(*wlist)[0] = xrootwin;
-
-	return append_child_windows((*wlist)[0], wlist, nwin);
+	return status ? -1 : 0;
 }
 
 static void log_xerr(Display* d, XErrorEvent* xev, const char* pfx)
@@ -506,43 +529,14 @@ static int xerr_abort(Display* d, XErrorEvent* xev)
 	abort();
 }
 
-static int xerr_ignore(Display* d, XErrorEvent* xev)
-{
-	log_xerr(d, xev, "Ignored");
-	return 0;
-}
-
-/*
- * Tell X that we'd like to be informed about events from the given window.
- *
- * It seems that there's a race, however, between our attempt to do this
- * (e.g. upon learning that the window in question exists) and it potentially
- * being destroyed.  If we call XSelectInput on it but it's already gone,
- * we'll get a BadWindow error, so we just ignore that if it happens.  We do
- * however call XSync() before switching error handlers so as to avoid
- * inappropriately ignoring errors on any requests that happened to be queued
- * at the time of the call.
- */
-static void request_window_events(Window w)
-{
-	int (*prev_errhandler)(Display*, XErrorEvent*);
-
-	XSync(xdisp, False);
-	prev_errhandler = XSetErrorHandler(xerr_ignore);
-	XSelectInput(xdisp, w, PointerMotionMask|SubstructureNotifyMask);
-	XSync(xdisp, False);
-	XSetErrorHandler(prev_errhandler);
-}
-
 int platform_init(mousepos_handler_t* mouse_handler)
 {
+	int status;
 	unsigned int i;
 	Atom atom;
 	char bitmap[1] = { 0, };
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
-	Window* all_windows;
-	unsigned int num_windows;
 
 	if (opmode == REMOTE && kvmap_get(remote_params, "DISPLAY"))
 		setenv("DISPLAY", kvmap_get(remote_params, "DISPLAY"), 1);
@@ -597,20 +591,10 @@ int platform_init(mousepos_handler_t* mouse_handler)
 
 	mousepos_handler = mouse_handler;
 
-	if (mousepos_handler && opmode == MASTER) {
-		if (get_all_xwindows(&all_windows, &num_windows)) {
-			elog("get_all_xwindows() failed, disabling switch-by-mouse\n");
-			mousepos_handler = NULL;
-		} else {
-			for (i = 0; i < num_windows; i++)
-				request_window_events(all_windows[i]);
-			xfree(all_windows);
-		}
-	}
-
 	xrr_init();
+	status = xi2_init();
 
-	return 0;
+	return status;
 }
 
 void platform_exit(void)
@@ -658,15 +642,14 @@ void get_screen_dimensions(struct rectangle* d)
 	*d = screen_dimensions;
 }
 
-struct xypoint get_mousepos(void)
+static struct xypoint get_mousepos_and_mask(unsigned int* mask)
 {
 	Window xchildwin, root_ret;
 	int child_x, child_y, tmp_x, tmp_y;
-	unsigned int tmp_mask;
 	struct xypoint pt;
 	Bool onscreen = XQueryPointer(xdisp, xrootwin, &root_ret, &xchildwin,
 	                              &tmp_x, &tmp_y, &child_x, &child_y,
-	                              &tmp_mask);
+	                              mask);
 	assert(root_ret == xrootwin);
 
 	if (!onscreen) {
@@ -678,6 +661,12 @@ struct xypoint get_mousepos(void)
 	pt.y = tmp_y;
 
 	return pt;
+}
+
+struct xypoint get_mousepos(void)
+{
+	unsigned int tmpmask;
+	return get_mousepos_and_mask(&tmpmask);
 }
 
 void set_mousepos(struct xypoint pt)
@@ -931,6 +920,29 @@ static void handle_local_mousemove(XMotionEvent* mev)
 		mousepos_handler((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
 }
 
+static void handle_rawmotion(XIRawEvent* rev)
+{
+	unsigned int mask;
+	struct xypoint pt;
+
+	if (mousepos_handler) {
+		/*
+		 * It's kind of sad that we're querying the server to retrieve
+		 * the mouse position every time we receive a motion event,
+		 * but every other approach I've tried has problems.  See the
+		 * lengthy comment in xi2_init() for details.
+		 *
+		 * FIXME: should also avoid calling the handler if some other
+		 * client has a keyboard or pointer grab -- unfortunately, I
+		 * don't see a simple way of determining whether or not that's
+		 * the case short of just trying to grab them...
+		 */
+		pt = get_mousepos_and_mask(&mask);
+		if (!mask)
+			mousepos_handler(pt);
+	}
+}
+
 static void handle_event(XEvent* ev)
 {
 
@@ -940,11 +952,6 @@ static void handle_event(XEvent* ev)
 			handle_grabbed_mousemove(&ev->xmotion);
 		else
 			handle_local_mousemove(&ev->xmotion);
-		break;
-
-	case CreateNotify:
-		if (opmode == MASTER && mousepos_handler)
-			request_window_events(ev->xcreatewindow.window);
 		break;
 
 	case KeyPress:
@@ -990,6 +997,23 @@ static void handle_event(XEvent* ev)
 
 	case SelectionNotify:
 		elog("unexpected SelectionNotify event\n");
+		break;
+
+	case GenericEvent:
+		assert(ev->xcookie.type == GenericEvent);
+		if (ev->xcookie.extension == xi2.opcode) {
+			if (XGetEventData(xdisp, &ev->xcookie)) {
+				if (ev->xcookie.evtype == XI_RawMotion)
+					handle_rawmotion(ev->xcookie.data);
+				else
+					elog("unexpected xi2 evtype: %d\n",
+					     ev->xcookie.evtype);
+			} else {
+				elog("XGetEventData() failed on xi2 GenericEvent\n");
+			}
+		} else {
+			elog("unexpected GenericEvent type: %d\n", ev->xcookie.type);
+		}
 		break;
 
 	case MapNotify:

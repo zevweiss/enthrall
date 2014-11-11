@@ -26,7 +26,7 @@ compile you'll need:
  - GNU `make` (`gmake` on some systems)
  - `flex` (2.5.35 and later known to work)
  - `bison` 2.4 or later
- - On X11 systems: XTest and XRandR extensions, `pkg-config`
+ - On X11 systems: XTest, XInput, and XRandR extensions, `pkg-config`
  - On Mac OS X: Xcode developer tools
 
 Unfortunately the version of bison provided by Apple on Mac OS X is
@@ -81,12 +81,6 @@ writable by any other user.
  - When using `show-focus = dim-inactive`, inactive OS X remotes will
    sometimes (for reasons currently unknown) spontaneously reset
    themselves to full brightness.
-
- - On X11, having windows of certain applications (Chrome or
-   virt-manager for example) at screen edges may inhibit `enthrall`'s
-   detection of the mouse pointer reaching those edges, disrupting
-   mouse-switch fuctionality (on the master node, remotes should be
-   unaffected).
 
  - On OSX, having iTerm2 (possibly other applications as well, though
    that's the only one I've noticed) as the foreground application

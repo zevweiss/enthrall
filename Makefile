@@ -24,7 +24,7 @@ ifeq ($(OS),Darwin)
 	CFLAGS += -iframework $(FMWKDIR) $(foreach f,$(FRAMEWORKS),-framework $f)
 else
 	PLATFORM = x11
-	XSUBLIBS = x11 xtst xrandr
+	XSUBLIBS = x11 xtst xrandr xi
 	X11CFLAGS := $(shell pkg-config --cflags $(XSUBLIBS))
 	X11LIBS := $(shell pkg-config --libs $(XSUBLIBS))
 	LIBS += $(X11LIBS)
