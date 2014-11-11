@@ -401,20 +401,24 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	return status ? -1 : 0;
 }
 
-static void xrr_init(void)
+static int xrr_init(void)
 {
 	int i;
+	int evbase, errbase;
+	int maj, min;
 
-	/* FIXME: better error-handling would be nice */
-	xrr.config = XRRGetScreenInfo(xdisp, xrootwin);
-	if (!xrr.config) {
-		initerr("XRRGetScreenInfo() failed\n");
-		abort();
+	if (!XRRQueryExtension(xdisp, &evbase, &errbase)
+	    || !XRRQueryVersion(xdisp, &maj, &min)) {
+		initerr("XRandR extension unavailable\n");
+		return -1;
 	}
+
+	debug("XRandR extension version %d.%d\n", maj, min);
+
 	xrr.resources = XRRGetScreenResources(xdisp, xrootwin);
 	if (!xrr.resources) {
 		initerr("XRRGetScreenResources() failed\n");
-		abort();
+		return -1;
 	}
 
 	xrr.crtc_gammas = xmalloc(xrr.resources->ncrtc * sizeof(*xrr.crtc_gammas));
@@ -423,6 +427,8 @@ static void xrr_init(void)
 		xrr.crtc_gammas[i].orig = XRRGetCrtcGamma(xdisp, xrr.resources->crtcs[i]);
 		xrr.crtc_gammas[i].alt = XRRAllocGamma(xrr.crtc_gammas[i].orig->size);
 	}
+
+	return 0;
 }
 
 static void xrr_exit(void)
@@ -459,8 +465,12 @@ static int xi2_init(void)
 		return -1;
 	}
 
-	if (XIQueryVersion(xdisp, &maj, &min))
+	if (XIQueryVersion(xdisp, &maj, &min)) {
+		initerr("XIQueryVersion() failed\n");
 		return -1;
+	}
+
+	debug("XInput extension version %d.%d\n", maj, min);
 
 	/*
 	 * The Saga of Global Pointer-Tracking under X: a Tale of Woe.
@@ -512,6 +522,21 @@ static int xi2_init(void)
 	status = XISelectEvents(xdisp, xrootwin, &ximask, 1);
 
 	return status ? -1 : 0;
+}
+
+static int xtst_init(void)
+{
+	int evbase, errbase;
+	int maj, min;
+
+	if (!XTestQueryExtension(xdisp, &evbase, &errbase, &maj, &min)) {
+		initerr("XTest extension unavailable\n");
+		return -1;
+	}
+
+	debug("XTest extension version %d.%d\n", maj, min);
+
+	return 0;
 }
 
 static void log_xerr(unsigned int level, Display* d, XErrorEvent* xev, const char* pfx)
@@ -593,8 +618,11 @@ int platform_init(mousepos_handler_t* mouse_handler)
 
 	mousepos_handler = mouse_handler;
 
-	xrr_init();
-	status = xi2_init();
+	status = xrr_init();
+	if (!status)
+		status = xi2_init();
+	if (!status)
+		status = xtst_init();
 
 	return status;
 }
