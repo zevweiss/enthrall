@@ -191,7 +191,7 @@ static void fail_remote(struct remote* rmt, const char* reason)
 {
 	uint64_t tmp, lshift, next_reconnect_delay;
 
-	warn("disconnecting remote '%s': %s\n", rmt->node.name, reason);
+	errlog("disconnecting remote '%s': %s\n", rmt->node.name, reason);
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
 
