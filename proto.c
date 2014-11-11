@@ -54,7 +54,7 @@ static uint32_t float_to_fixed(float orig_fp)
 }
 
 static const size_t payload_sizes[] = {
-	[MT_SETUP] = sizeof(uint32_t),
+	[MT_SETUP] = 2 * sizeof(uint32_t),
 	[MT_READY] = 4 * sizeof(uint32_t),
 	[MT_SHUTDOWN] = 0,
 	[MT_MOVEREL] = 2 * sizeof(int32_t),
@@ -70,12 +70,16 @@ static const size_t payload_sizes[] = {
 
 static void flatten_setup(const struct message* msg, void* buf)
 {
-	*(uint32_t*)buf = htonl(msg->setup.prot_vers);
+	uint32_t* u32b = buf;
+	u32b[0] = htonl(msg->setup.prot_vers);
+	u32b[1] = htonl(msg->setup.loglevel);
 }
 
 static void unflatten_setup(const void* buf, struct message* msg)
 {
-	msg->setup.prot_vers = ntohl(*(uint32_t*)buf);
+	const uint32_t* u32b = buf;
+	msg->setup.prot_vers = ntohl(u32b[0]);
+	msg->setup.loglevel = ntohl(u32b[1]);
 }
 
 static void flatten_ready(const struct message* msg, void* buf)

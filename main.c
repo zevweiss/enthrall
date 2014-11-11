@@ -71,6 +71,12 @@ static void init_logfile(void)
 	}
 }
 
+/* Small hack to let remote.c set the log level... */
+void set_loglevel(unsigned int level)
+{
+	config->log.level = level;
+}
+
 __printf(1, 2) void initerr(const char* fmt, ...)
 {
 	va_list va;
@@ -396,6 +402,7 @@ static void setup_remote(struct remote* rmt)
 	setupmsg = new_message(MT_SETUP);
 	setupmsg->type = MT_SETUP;
 	setupmsg->setup.prot_vers = PROT_VERSION;
+	setupmsg->setup.loglevel = config->log.level;
 	setupmsg->extra.buf = flatten_kvmap(rmt->params, &setupmsg->extra.len);
 
 	enqueue_message(rmt, setupmsg);
@@ -1106,6 +1113,14 @@ int main(int argc, char** argv)
 		{ NULL, 0, NULL, 0, },
 	};
 
+	/* Zero is the default for most config settings... */
+	memset(&cfg, 0, sizeof(cfg));
+
+	/* ...except log level. */
+	cfg.log.level = LL_INFO;
+
+	config = &cfg;
+
 	if (strrchr(argv[0], '/'))
 		progname = strrchr(argv[0], '/') + 1;
 	else
@@ -1168,16 +1183,9 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 
-	/* Zero is the default for most config settings... */
-	memset(&cfg, 0, sizeof(cfg));
-
-	/* ...except log level. */
-	cfg.log.level = LL_INFO;
-
-	if (parse_cfg(cfgfile, &cfg))
+	if (parse_cfg(cfgfile, config))
 		exit(1);
 	fclose(cfgfile);
-	config = &cfg;
 
 	init_logfile();
 

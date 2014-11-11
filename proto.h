@@ -28,7 +28,11 @@ typedef uint32_t msgtype_t;
 
 struct setup_msg {
 	uint32_t prot_vers;
-	/* extra data buffer contains additional configuration parameters */
+	uint32_t loglevel;
+	/*
+	 * Extra data buffer contains additional platform-specific
+	 * configuration parameters
+	 */
 };
 
 struct ready_msg {

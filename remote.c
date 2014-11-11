@@ -82,6 +82,8 @@ static void handle_setup_msg(const struct message* msg)
 		exit(1);
 	}
 
+	set_loglevel(msg->setup.loglevel);
+
 	remote_params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
 	if (!remote_params) {
 		errlog("failed to unflatted remote-params kvmap\n");
