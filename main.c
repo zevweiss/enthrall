@@ -683,7 +683,7 @@ static void indicate_switch(struct node* from, struct node* to)
 		break;
 
 	case FH_DIM_INACTIVE:
-		if (from != to)
+		if (from && from != to)
 			transition_brightness(from, 1.0, fh->brightness, fh->duration,
 			                      fh->fade_steps);
 		transition_brightness(to, fh->brightness, 1.0, fh->duration,
@@ -702,6 +702,18 @@ static void indicate_switch(struct node* from, struct node* to)
 }
 
 static struct xypoint saved_master_mousepos;
+
+/*
+ * A special focus-switch for when the focused remote fails; in this case we
+ * just revert focus directly to the master.
+ */
+static void focus_master(void)
+{
+	ungrab_inputs();
+	set_mousepos(saved_master_mousepos);
+	focused_node = &config->master;
+	indicate_switch(NULL, &config->master);
+}
 
 /*
  * Returns non-zero on a successful "real" switch, or zero if no actual switch
@@ -753,15 +765,6 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	focused_node = to;
 
 	return 1;
-}
-
-static void focus_master(void)
-{
-	keycode_t* modkeys = get_current_modifiers();
-
-	focus_node(&config->master, modkeys, 0);
-
-	xfree(modkeys);
 }
 
 static int focus_neighbor(direction_t dir, keycode_t* modkeys, int via_hotkey)
