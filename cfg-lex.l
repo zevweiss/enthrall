@@ -44,6 +44,17 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "reconnect"	return KW_RECONNECT;
 "quit"		return KW_QUIT;
 
+"log-file"	return KW_LOGFILE;
+"log-level"	return KW_LOGLEVEL;
+"syslog"	return KW_SYSLOG;
+"stderr"	return KW_STDERR;
+
+"error"		return KW_ERROR;
+"warn"		return KW_WARN;
+"info"		return KW_INFO;
+"verbose"	return KW_VERBOSE;
+"debug"		return KW_DEBUG;
+
 "show-focus"	return KW_SHOWFOCUS;
 "dim-inactive"	return KW_DIMINACTIVE;
 "flash-active"	return KW_FLASHACTIVE;
@@ -94,7 +105,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 }
 
 <*>.|\n {
-	elog("unrecognized token at line %d: %s\n", cfg_lineno, cfg_text);
+	initerr("unrecognized token at line %d: %s\n", cfg_lineno, cfg_text);
 	exit(1);
 }
 

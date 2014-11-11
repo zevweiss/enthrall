@@ -99,13 +99,13 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 	cgerr = CGGetDisplayTransferByTable(d->id, d->orig_gamma.numents, d->orig_gamma.red,
 	                                    d->orig_gamma.green, d->orig_gamma.blue, &numents);
 	if (cgerr) {
-		elog("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
-		elog("brightness adjustment will disabled\n");
+		initerr("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
+		initerr("brightness adjustment will disabled\n");
 		clear_gamma_table(&d->orig_gamma);
 		clear_gamma_table(&d->alt_gamma);
 	} else if (numents != d->orig_gamma.numents) {
-		elog("CGGetDisplayTransferByTable() behaves strangely: %u != %u\n",
-		     numents, d->orig_gamma.numents);
+		initerr("CGGetDisplayTransferByTable() behaves strangely: %u != %u\n",
+		        numents, d->orig_gamma.numents);
 		assert(numents < d->orig_gamma.numents);
 		d->orig_gamma.numents = numents;
 		d->alt_gamma.numents = numents;
@@ -155,7 +155,7 @@ int platform_init(mousepos_handler_t* mouse_handler)
 
 	kr = mach_timebase_info(&mach_timebase);
 	if (kr != KERN_SUCCESS) {
-		elog("mach_timebase_info() failed: %s\n", mach_error_string(kr));
+		initerr("mach_timebase_info() failed: %s\n", mach_error_string(kr));
 		return -1;
 	}
 
@@ -166,7 +166,7 @@ int platform_init(mousepos_handler_t* mouse_handler)
 	cgerr = CGGetOnlineDisplayList(ARR_LEN(displayids), displayids,
 	                               &num_displays);
 	if (cgerr) {
-		elog("CGGetOnlineDisplayList() failed (%d)\n", cgerr);
+		initerr("CGGetOnlineDisplayList() failed (%d)\n", cgerr);
 		return -1;
 	}
 
@@ -183,7 +183,7 @@ int platform_init(mousepos_handler_t* mouse_handler)
 
 	status = PasteboardCreate(kPasteboardClipboard, &clipboard);
 	if (status != noErr) {
-		elog("PasteboardCreate() failed (%d)\n", status);
+		initerr("PasteboardCreate() failed (%d)\n", status);
 		return -1;
 	}
 
@@ -288,12 +288,12 @@ static OSStatus hotkey_handler_fn(EventHandlerCallRef next, EventRef ev, void* a
 	status = GetEventParameter(ev, kEventParamDirectObject, typeEventHotKeyID,
 	                           NULL, sizeof(hkid), NULL, &hkid);
 	if (status) {
-		elog("GetEventParameter() failed in hotkey_handler_fn()\n");
+		errlog("GetEventParameter() failed in hotkey_handler_fn()\n");
 		abort();
 	}
 
 	if (hkid.id >= num_hotkeys) {
-		elog("Out-of-bounds hotkey ID in hotkey_handler_fn()\n");
+		errlog("Out-of-bounds hotkey ID in hotkey_handler_fn()\n");
 		abort();
 	}
 
@@ -320,7 +320,8 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 
 	for (hk = hotkeys; hk < hotkeys + num_hotkeys; hk++) {
 		if (hk->modmask == modmask && hk->keycode == kc) {
-			elog("hotkey '%s' conflicts with an earlier hotkey binding\n", keystr);
+			initerr("hotkey '%s' conflicts with an earlier hotkey binding\n",
+			        keystr);
 			return -1;
 		}
 	}
@@ -386,7 +387,7 @@ static void set_gamma_table(CGDirectDisplayID disp, const struct gamma_table* gt
 
 	err = CGSetDisplayTransferByTable(disp, gt->numents, gt->red, gt->green, gt->blue);
 	if (err)
-		elog("CGSetDisplayTransferByTable() failed (%d)\n", err);
+		errlog("CGSetDisplayTransferByTable() failed (%d)\n", err);
 }
 
 /*
@@ -424,7 +425,7 @@ void set_display_brightness(float f)
 static inline uint32_t cgfloat_to_u32(CGFloat f)
 {
 	if (f > UINT32_MAX || f < 0) {
-		elog("out-of-range CGFloat: %g\n", f);
+		errlog("out-of-range CGFloat: %g\n", f);
 		abort();
 	}
 
@@ -437,7 +438,7 @@ static CGPoint get_mousepos_cgpoint(void)
 	CGEventRef ev = CGEventCreate(NULL);
 
 	if (!ev) {
-		elog("CGEventCreate failed\n");
+		errlog("CGEventCreate failed\n");
 		abort();
 	}
 
@@ -456,7 +457,7 @@ static int get_pt_display(CGPoint pt, CGDirectDisplayID* d)
 
 	err = CGGetDisplaysWithPoint(pt, !!d, d, &numdisplays);
 	if (err) {
-		elog("CGGetDisplaysWithPoint() failed: %d\n", err);
+		errlog("CGGetDisplaysWithPoint() failed: %d\n", err);
 		abort();
 	}
 	return !!numdisplays;
@@ -472,7 +473,7 @@ static void post_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 	if (!get_pt_display(cgpt, &disp)) {
 		curpos = get_mousepos_cgpoint();
 		if (!get_pt_display(curpos, &disp)) {
-			elog("mouse position (%g,%g) off any display?\n", curpos.x, curpos.y);
+			vinfo("mouse position (%g,%g) off any display?\n", curpos.x, curpos.y);
 			disp = CGMainDisplayID();
 		}
 	}
@@ -499,7 +500,7 @@ static void post_mouseevent(CGPoint cgpt, CGEventType type, CGMouseButton button
 
 	ev = CGEventCreateMouseEvent(NULL, type, cgpt, button);
 	if (!ev) {
-		elog("CGEventCreateMouseEvent failed\n");
+		errlog("CGEventCreateMouseEvent failed\n");
 		abort();
 	}
 	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
@@ -642,7 +643,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 		break;
 
 	default:
-		elog("unhandled click event button %u\n", button);
+		warn("unhandled click event button %u\n", button);
 		return;
 	}
 
@@ -656,7 +657,7 @@ void do_clickevent(mousebutton_t button, pressrel_t pr)
 	}
 
 	if (!ev) {
-		elog("CGEventCreateMouseEvent failed\n");
+		errlog("CGEventCreateMouseEvent failed\n");
 		abort();
 	}
 	CGEventSetFlags(ev, modflags|kCGEventFlagMaskNonCoalesced);
@@ -695,7 +696,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 	cgkc = etkeycode_to_cgkeycode(key);
 	if (cgkc == kVK_NULL) {
-		elog("keycode %u not mapped\n", key);
+		warn("keycode %u not mapped\n", key);
 		return;
 	}
 
@@ -708,7 +709,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 		ev = CGEventCreate(NULL);
 		if (!ev) {
-			elog("CGEventCreate() failed\n");
+			errlog("CGEventCreate() failed\n");
 			abort();
 		}
 		CGEventSetType(ev, kCGEventFlagsChanged);
@@ -718,7 +719,7 @@ void do_keyevent(keycode_t key, pressrel_t pr)
 
 	ev = CGEventCreateKeyboardEvent(NULL, cgkc, pr == PR_PRESS);
 	if (!ev) {
-		elog("CGEventCreateKeyboardEvent() failed\n");
+		errlog("CGEventCreateKeyboardEvent() failed\n");
 		abort();
 	}
 
@@ -749,13 +750,13 @@ char* get_clipboard_text(void)
 
 	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
 	if (status != noErr) {
-		elog("PasteboardGetItemIdentifier(1) failed (%d)\n", status);
+		errlog("PasteboardGetItemIdentifier(1) failed (%d)\n", status);
 		return NULL;
 	}
 
 	status = PasteboardCopyItemFlavorData(clipboard, itemid, PLAINTEXT, &data);
 	if (status != noErr) {
-		elog("PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
+		errlog("PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
 		return NULL;
 	}
 
@@ -777,7 +778,7 @@ int set_clipboard_text(const char* text)
 
 	data = CFDataCreate(NULL, (UInt8*)text, strlen(text));
 	if (!data) {
-		elog("CFDataCreate() failed\n");
+		errlog("CFDataCreate() failed\n");
 		return -1;
 	}
 
@@ -792,7 +793,7 @@ int set_clipboard_text(const char* text)
 	status = PasteboardPutItemFlavor(clipboard, (PasteboardItemID)data,
 	                                 PLAINTEXT, data, 0);
 	if (status != noErr) {
-		elog("PasteboardPutItemFlavor() failed (%d)\n", status);
+		errlog("PasteboardPutItemFlavor() failed (%d)\n", status);
 		ret = -1;
 	}
 
@@ -910,14 +911,14 @@ struct fdmon_ctx* fdmon_register_fd(int fd, fdmon_callback_t readcb,
 	                                    fdmon_callback, &fdctx);
 
 	if (!ctx->fdref) {
-		elog("CFFileDescriptorCreate() failed\n");
+		errlog("CFFileDescriptorCreate() failed\n");
 		abort();
 	}
 
 	ctx->rlsrc = CFFileDescriptorCreateRunLoopSource(kCFAllocatorDefault,
 	                                                 ctx->fdref, 0);
 	if (!ctx->rlsrc) {
-		elog("CFFileDescriptorCreateRunLoopSource() failed\n");
+		errlog("CFFileDescriptorCreateRunLoopSource() failed\n");
 		abort();
 	}
 
@@ -935,7 +936,7 @@ void fdmon_unregister(struct fdmon_ctx* ctx)
 void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
 {
 	if (flags & ~(FM_READ|FM_WRITE)) {
-		elog("invalid fdmon flags: %u\n", flags);
+		errlog("invalid fdmon flags: %u\n", flags);
 		abort();
 	}
 
@@ -947,7 +948,7 @@ void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
 void fdmon_unmonitor(struct fdmon_ctx* ctx, uint32_t flags)
 {
 	if (flags & ~(FM_READ|FM_WRITE)) {
-		elog("invalid fdmon flags: %u\n", flags);
+		errlog("invalid fdmon flags: %u\n", flags);
 		abort();
 	}
 
@@ -1004,13 +1005,13 @@ static void check_assistive_device_access(void)
 	CFDictionaryRef axdict = CFDictionaryCreate(NULL, axdictkeys, axdictvals, 1, NULL, NULL);
 
 	if (!axdict) {
-		elog("failed to create CFDictionaryRef\n");
+		initerr("failed to create CFDictionaryRef\n");
 		abort();
 	}
 
 
 	if (!AXIsProcessTrustedWithOptions(axdict)) {
-		elog("Not trusted for assistive device access.\n");
+		initerr("Not trusted for assistive device access.\n");
 		/*
 		 * Annoyingly, the dialog AXIsProcessTrustedWithOptions() pops
 		 * up happens asynchronously, and the API doesn't offer any
@@ -1021,16 +1022,18 @@ static void check_assistive_device_access(void)
 		 * else can you do when there's an unavoidable race condition
 		 * built in to the system library?).
 		 */
-		elog("And here we sleep asynchronously, hoping Apple's stupid API has "
-		     "popped up the message window before we exit...\n");
+		initerr("And here we sleep asynchronously, hoping Apple's stupid API has "
+		        "popped up the message window before we exit...\n");
 		sleep(5);
-		elog("(Giving up and exiting.)\n");
+		initerr("(Giving up and exiting.)\n");
 		exit(1);
 	}
 #else
 	if (!AXAPIEnabled()) {
-		elog("Assistive device access disabled, can't access keyboard events.\n");
-		elog("(You can enable this in the Accessibility pane of System Preferences.\n)");
+		initerr("Assistive device access is disabled; "
+		        "can't access keyboard events.\n");
+		initerr("(You can enable this in the Accessibility pane of "
+		        "System Preferences.\n)");
 		exit(1);
 	}
 #endif
@@ -1184,7 +1187,7 @@ static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CG
 	default:
 		if ((evtype < (sizeof(known_unknowns) * CHAR_BIT) - 1)
 		    && !(known_unknowns & (1ULL << evtype))) {
-			elog("Warning: CGEvent type %u unknown\n", evtype);
+			warn("CGEvent type %u unknown\n", evtype);
 			known_unknowns |= 1ULL << evtype;
 		}
 		break;
@@ -1204,13 +1207,13 @@ static void setup_event_tap(void)
 	                             kCGEventTapOptionDefault, kCGEventMaskForAllEvents,
 	                             evtap_callback, NULL);
 	if (!evtapport) {
-		elog("Can't create event tap!\n");
+		initerr("Can't create event tap!\n");
 		abort();
 	}
 
 	tapsrc = CFMachPortCreateRunLoopSource(NULL, evtapport, 0);
 	if (!tapsrc) {
-		elog("CFMachPortCreateRunLoopSource() failed\n");
+		initerr("CFMachPortCreateRunLoopSource() failed\n");
 		abort();
 	}
 

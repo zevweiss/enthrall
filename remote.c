@@ -62,7 +62,7 @@ static void handle_message(const struct message* msg)
 		break;
 
 	default:
-		elog("unhandled message type: %u\n", msg->type);
+		errlog("unhandled message type: %u\n", msg->type);
 		shutdown_remote();
 		exit(1);
 	}
@@ -73,23 +73,23 @@ static void handle_setup_msg(const struct message* msg)
 	struct message* readymsg;
 
 	if (msg->type != MT_SETUP) {
-		elog("unexpected message type %u instead of SETUP\n", msg->type);
+		errlog("unexpected message type %u instead of SETUP\n", msg->type);
 		exit(1);
 	}
 
 	if (msg->setup.prot_vers != PROT_VERSION) {
-		elog("unsupported protocol version %d\n", msg->setup.prot_vers);
+		errlog("unsupported protocol version %d\n", msg->setup.prot_vers);
 		exit(1);
 	}
 
 	remote_params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
 	if (!remote_params) {
-		elog("failed to unflatted remote-params kvmap\n");
+		errlog("failed to unflatted remote-params kvmap\n");
 		exit(1);
 	}
 
 	if (platform_init(NULL) < 0) {
-		elog("platform_init() failed\n");
+		errlog("platform_init() failed\n");
 		exit(1);
 	}
 
@@ -112,7 +112,7 @@ static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 
 static void mc_err_cb(struct msgchan* mc, void* arg)
 {
-	elog("msgchan error, remote terminating\n");
+	errlog("msgchan error, remote terminating\n");
 	shutdown_remote();
 	exit(1);
 }

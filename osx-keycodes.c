@@ -454,13 +454,13 @@ int parse_keystring(const char* ks, CGKeyCode *kc, CGEventFlags* modmask)
 			goto next;
 
 		if (osx_string_to_keycode(tmp, &code)) {
-			elog("Invalid key: '%s'\n", tmp);
+			initerr("Invalid key: '%s'\n", tmp);
 			status = -1;
 			goto out;
 		}
 
 		if (*kc) {
-			elog("Invalid hotkey '%s': multiple non-modifier keys\n", ks);
+			initerr("Invalid hotkey '%s': multiple non-modifier keys\n", ks);
 			status = -1;
 			goto out;
 		}

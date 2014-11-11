@@ -305,26 +305,26 @@ static int parse_keystring(const char* ks, KeyCode* kc, unsigned int* modmask)
 
 		sym = XStringToKeysym(tmp);
 		if (sym == NoSymbol) {
-			elog("Invalid key: '%s'\n", tmp);
+			initerr("Invalid key: '%s'\n", tmp);
 			status = -1;
 			goto out;
 		}
 
 		if (!IsModifierKey(sym)) {
 			if (*kc) {
-				elog("Invalid hotkey '%s': multiple non-modifier "
-				     "keys\n", ks);
+				initerr("Invalid hotkey '%s': multiple non-modifier "
+				        "keys\n", ks);
 				status = -1;
 				goto out;
 			}
 			*kc = XKeysymToKeycode(xdisp, sym);
 			if (!*kc) {
-				elog("No keycode for keysym '%s'\n", tmp);
+				initerr("No keycode for keysym '%s'\n", tmp);
 				status = -1;
 				goto out;
 			}
 		} else {
-			elog("'%s' is not a valid hotkey key\n", tmp);
+			initerr("'%s' is not a valid hotkey key\n", tmp);
 			status = -1;
 			goto out;
 		}
@@ -363,7 +363,8 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 	kev.state = modmask;
 
 	if (find_hotkey(&kev)) {
-		elog("hotkey '%s' conflicts with an earlier hotkey binding\n", keystr);
+		initerr("hotkey '%s' conflicts with an earlier hotkey binding\n",
+		        keystr);
 		return -1;
 	}
 
@@ -383,16 +384,17 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 		break;
 
 	case BadAccess:
-		elog("Failed to bind hotkey \"%s\" (already bound by another process?)\n",
-		     keystr);
+		initerr("Failed to bind hotkey \"%s\" (already bound by another "
+		        "process?)\n", keystr);
 		break;
 
 	case BadValue:
-		elog("Invalid hotkey \"%s\" (?)\n", keystr);
+		initerr("Invalid hotkey \"%s\" (?)\n", keystr);
 		break;
 
 	default:
-		elog("Failed to bind hotkey \"%s\" for mysterious reasons...\n", keystr);
+		initerr("Failed to bind hotkey \"%s\" for mysterious reasons...\n",
+		        keystr);
 		break;
 	}
 
@@ -406,12 +408,12 @@ static void xrr_init(void)
 	/* FIXME: better error-handling would be nice */
 	xrr.config = XRRGetScreenInfo(xdisp, xrootwin);
 	if (!xrr.config) {
-		elog("XRRGetScreenInfo() failed\n");
+		initerr("XRRGetScreenInfo() failed\n");
 		abort();
 	}
 	xrr.resources = XRRGetScreenResources(xdisp, xrootwin);
 	if (!xrr.resources) {
-		elog("XRRGetScreenResources() failed\n");
+		initerr("XRRGetScreenResources() failed\n");
 		abort();
 	}
 
@@ -453,7 +455,7 @@ static int xi2_init(void)
 
 	if (!XQueryExtension(xdisp, "XInputExtension", &xi2.opcode, &xi2.evbase,
 	                     &xi2.errbase)) {
-		elog("XInputExtension unavailable\n");
+		initerr("XInputExtension unavailable\n");
 		return -1;
 	}
 
@@ -512,20 +514,20 @@ static int xi2_init(void)
 	return status ? -1 : 0;
 }
 
-static void log_xerr(Display* d, XErrorEvent* xev, const char* pfx)
+static void log_xerr(unsigned int level, Display* d, XErrorEvent* xev, const char* pfx)
 {
 	char errbuf[1024];
 
 	XGetErrorText(d,  xev->error_code, errbuf, sizeof(errbuf));
 	errbuf[sizeof(errbuf)-1] = '\0';
 
-	elog("%s X Error: request %hhu.%hhu -> %s\n", pfx, xev->request_code,
+	mlog(level, "%s X Error: request %hhu.%hhu -> %s\n", pfx, xev->request_code,
 	     xev->minor_code, errbuf);
 }
 
 static int xerr_abort(Display* d, XErrorEvent* xev)
 {
-	log_xerr(d, xev, "Fatal");
+	log_xerr(LL_ERROR, d, xev, "Fatal");
 	abort();
 }
 
@@ -547,7 +549,7 @@ int platform_init(mousepos_handler_t* mouse_handler)
 
 	xdisp = XOpenDisplay(NULL);
 	if (!xdisp) {
-		elog("X11 init: failed to open display\n");
+		initerr("X11 init: failed to open display\n");
 		return -1;
 	}
 
@@ -653,7 +655,7 @@ static struct xypoint get_mousepos_and_mask(unsigned int* mask)
 	assert(root_ret == xrootwin);
 
 	if (!onscreen) {
-		elog("X11 pointer not on screen?\n");
+		errlog("X11 pointer not on screen?\n");
 		abort();
 	}
 
@@ -758,7 +760,7 @@ int grab_inputs(void)
 	int status = XGrabKeyboard(xdisp, xrootwin, False, GrabModeAsync,
 	                           GrabModeAsync, CurrentTime);
 	if (status) {
-		elog("Failed to grab keyboard: %s\n", grab_failure_message(status));
+		errlog("Failed to grab keyboard: %s\n", grab_failure_message(status));
 		return status;
 	}
 
@@ -767,7 +769,7 @@ int grab_inputs(void)
 
 	if (status) {
 		XUngrabKeyboard(xdisp, CurrentTime);
-		elog("Failed to grab pointer: %s\n", grab_failure_message(status));
+		errlog("Failed to grab pointer: %s\n", grab_failure_message(status));
 		return status;
 	}
 
@@ -869,7 +871,7 @@ static void handle_selection_request(const XSelectionRequestEvent* req)
 
 	/* Acknowledge that the transfer has been made (or failed) */
 	if (!send_selection_notify(req, property))
-		elog("Failed to send SelectionNotify to requestor\n");
+		errlog("Failed to send SelectionNotify to requestor\n");
 }
 
 static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
@@ -881,14 +883,14 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	kc = keysym_to_keycode(sym);
 
 	if (kc == ET_null) {
-		elog("No mapping for keysym %lu (%s)\n", sym, XKeysymToString(sym));
+		warn("No mapping for keysym %lu (%s)\n", sym, XKeysymToString(sym));
 		return;
 	}
 
 	if (!is_remote(focused_node)) {
-		elog("keyevent (%s %s, modmask=%#x) with no focused remote\n",
-		     XKeysymToString(sym), pr == PR_PRESS ? "pressed" : "released",
-		     kev->state);
+		vinfo("keyevent (%s %s, modmask=%#x) with no focused remote\n",
+		      XKeysymToString(sym), pr == PR_PRESS ? "pressed" : "released",
+		      kev->state);
 		return;
 	}
 
@@ -966,7 +968,7 @@ static void handle_event(XEvent* ev)
 
 	case ButtonPress:
 		if (!is_remote(focused_node))
-			elog("ButtonPress with no focused remote\n");
+			vinfo("ButtonPress with no focused remote\n");
 		else
 			send_clickevent(focused_node->remote,
 			                LOOKUP(ev->xbutton.button, pi_mousebuttons),
@@ -975,7 +977,7 @@ static void handle_event(XEvent* ev)
 
 	case ButtonRelease:
 		if (!is_remote(focused_node))
-			elog("ButtonRelease with no focused remote\n");
+			vinfo("ButtonRelease with no focused remote\n");
 		else
 			send_clickevent(focused_node->remote,
 			                LOOKUP(ev->xbutton.button, pi_mousebuttons),
@@ -996,17 +998,17 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case SelectionNotify:
-		elog("unexpected SelectionNotify event\n");
+		vinfo("unexpected SelectionNotify event\n");
 		break;
 
 	case GenericEvent:
 		if (ev->xcookie.extension != xi2.opcode)
-			elog("unexpected GenericEvent type: %d\n", ev->xcookie.type);
+			vinfo("unexpected GenericEvent type: %d\n", ev->xcookie.type);
 		else if (!XGetEventData(xdisp, &ev->xcookie))
-			elog("XGetEventData() failed on xi2 GenericEvent\n");
+			vinfo("XGetEventData() failed on xi2 GenericEvent\n");
 		else {
 			if (ev->xcookie.evtype != XI_RawMotion)
-				elog("unexpected xi2 evtype: %d\n", ev->xcookie.evtype);
+				vinfo("unexpected xi2 evtype: %d\n", ev->xcookie.evtype);
 			else
 				handle_rawmotion(ev->xcookie.data);
 			XFreeEventData(xdisp, &ev->xcookie);
@@ -1023,7 +1025,7 @@ static void handle_event(XEvent* ev)
 		break;
 
 	default:
-		elog("unexpected XEvent type: %d\n", ev->type);
+		vinfo("unexpected XEvent type: %d\n", ev->type);
 		break;
 	}
 }
@@ -1077,13 +1079,13 @@ char* get_clipboard_text(void)
 			return xstrdup("");
 
 		if (ev.xselection.selection != selection_atom)
-			elog("unexpected selection in SelectionNotify event\n");
+			warn("unexpected selection in SelectionNotify event\n");
 		if (ev.xselection.property != et_selection_data)
-			elog("unexpected property in SelectionNotify event\n");
+			warn("unexpected property in SelectionNotify event\n");
 		if (ev.xselection.requestor != xwin)
-			elog("unexpected requestor in SelectionNotify event\n");
+			warn("unexpected requestor in SelectionNotify event\n");
 		if (ev.xselection.target != XA_STRING)
-			elog("unexpected target in SelectionNotify event\n");
+			warn("unexpected target in SelectionNotify event\n");
 
 		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
 		                   ev.xselection.property, 0, (1L << 24), True,
@@ -1091,12 +1093,12 @@ char* get_clipboard_text(void)
 		                   &bytes_remaining, &prop);
 
 		if (proptype != XA_STRING && proptype != utf8_string_atom)
-			elog("selection window property has unexpected type\n");
+			warn("selection window property has unexpected type\n");
 		if (bytes_remaining)
-			elog("%lu bytes remaining of selection window property\n",
-			        bytes_remaining);
+			warn("%lu bytes remaining of selection window property\n",
+			     bytes_remaining);
 		if (propformat != 8) {
-			elog("selection window property has unexpected format (%d)\n",
+			warn("selection window property has unexpected format (%d)\n",
 			     propformat);
 			return xstrdup("");
 		}
@@ -1109,7 +1111,7 @@ char* get_clipboard_text(void)
 		return text;
 	}
 
-	elog("timed out waiting for selection\n");
+	errlog("timed out waiting for selection\n");
 	return xstrdup("");
 }
 
@@ -1125,7 +1127,7 @@ int set_clipboard_text(const char* text)
 		atom = clipboard_xatoms[i].atom;
 		XSetSelectionOwner(xdisp, atom, xwin, last_xevent_time);
 		if (XGetSelectionOwner(xdisp, atom) != xwin) {
-			elog("failed to take ownership of X selection\n");
+			errlog("failed to take ownership of X selection\n");
 			return -1;
 		}
 	}
@@ -1264,7 +1266,7 @@ void fdmon_unregister(struct fdmon_ctx* ctx)
 void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
 {
 	if (flags & ~(FM_READ|FM_WRITE)) {
-		elog("invalid fdmon flags: %u\n", flags);
+		errlog("invalid fdmon flags: %u\n", flags);
 		abort();
 	}
 
@@ -1274,7 +1276,7 @@ void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags)
 void fdmon_unmonitor(struct fdmon_ctx* ctx, uint32_t flags)
 {
 	if (flags & ~(FM_READ|FM_WRITE)) {
-		elog("invalid fdmon flags: %u\n", flags);
+		errlog("invalid fdmon flags: %u\n", flags);
 		abort();
 	}
 

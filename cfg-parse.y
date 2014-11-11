@@ -31,6 +31,7 @@ int parse_cfg(FILE* cfgfile, struct config* cfg);
 	struct mouse_switch mouseswitch;
 	struct focus_target focus_target;
 	struct link link;
+	struct logfile logfile;
 	struct {
 		float duration;
 		int numsteps;
@@ -89,6 +90,10 @@ static struct remote* new_uninit_remote(void)
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
+%token KW_LOGFILE KW_LOGLEVEL KW_SYSLOG KW_STDERR
+%token KW_ERROR KW_WARN KW_INFO KW_VERBOSE KW_DEBUG
+
+
 %token END 0 "EOF"
 
 %type <d> realnum
@@ -101,6 +106,8 @@ static struct remote* new_uninit_remote(void)
 %type <link> link
 %type <dir> opt_direction
 %type <str> opt_string
+%type <d> loglevel
+%type <logfile> logfile
 
 %type <i> port_setting fade_steps show_nullswitch
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
@@ -234,6 +241,17 @@ show_nullswitch: KW_YES { $$ = NS_YES; }
 | KW_NO { $$ = NS_NO; }
 | KW_HOTKEYONLY { $$ = NS_HOTKEYONLY; };
 
+loglevel: KW_ERROR { $$ = LL_ERROR; }
+| KW_WARN { $$ = LL_WARN; }
+| KW_INFO { $$ = LL_INFO; }
+| KW_VERBOSE { $$ = LL_VERBOSE; }
+| KW_DEBUG { $$ = LL_DEBUG; };
+
+logfile: KW_SYSLOG { $$.type = LF_SYSLOG; }
+| KW_STDERR { $$.type = LF_STDERR; }
+| KW_NONE { $$.type = LF_NONE; }
+| STRING { $$.type = LF_FILE; $$.path = $1; };
+
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
 }
@@ -260,6 +278,12 @@ master_opt: remoteshell_setting {
 }
 | KW_SHOWNULLSWITCH EQ show_nullswitch {
 	st->cfg->show_nullswitch = $3;
+}
+| KW_LOGFILE EQ logfile {
+	st->cfg->log.file = $3;
+}
+| KW_LOGLEVEL EQ loglevel {
+	st->cfg->log.level = $3;
 }
 | KW_HOTKEY LBRACKET STRING RBRACKET EQ action {
 	struct hotkey* hk = xmalloc(sizeof(*hk));
@@ -391,5 +415,5 @@ int parse_cfg(FILE* cfgfile, struct config* cfg)
 
 static void cfg_error(struct cfg_pstate* st, char const* s)
 {
-	elog("config parse error: %s\n", s);
+	initerr("config parse error: %s\n", s);
 }

@@ -4,8 +4,10 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <time.h>
 #include <limits.h>
 #include <getopt.h>
+#include <syslog.h>
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <sys/fcntl.h>
@@ -29,20 +31,111 @@ static char* progname;
 
 static struct config* config;
 
+static FILE* logfile;
+
 #define for_each_remote(r) for (r = config->remotes; r; r = r->next)
 
 static void focus_master(void);
 static void setup_remote(struct remote* rmt);
 static void handle_message(struct remote* rmt, const struct message* msg);
 
-__printf(1, 2) void elog(const char* fmt, ...)
+#define SYSLOG_FACILITY LOG_USER
+
+static void init_logfile(void)
+{
+	switch (config->log.file.type) {
+	case LF_NONE:
+		break;
+
+	case LF_STDERR:
+		logfile = stderr;
+		break;
+
+	case LF_FILE:
+		logfile = fopen(config->log.file.path, "a");
+		if (!logfile) {
+			fprintf(stderr, "Failed to open log file %s\n",
+			        config->log.file.path);
+			exit(1);
+		}
+		setlinebuf(logfile);
+		break;
+
+	case LF_SYSLOG:
+		openlog(progname, LOG_PID, SYSLOG_FACILITY);
+		break;
+
+	default:
+		fprintf(stderr, "Bad log file type %d\n", config->log.file.type);
+		abort();
+	}
+}
+
+__printf(1, 2) void initerr(const char* fmt, ...)
+{
+	va_list va;
+
+	va_start(va, fmt);
+	vfprintf(stderr, fmt, va);
+	va_end(va);
+}
+
+static void vlog(const char* fmt, va_list va)
+{
+	char datestr[128];
+	time_t now;
+	struct tm tm;
+
+	switch (config->log.file.type) {
+	case LF_NONE:
+		break;
+
+	case LF_SYSLOG:
+		/* TODO: maybe carry different log levels through to syslog? */
+		vsyslog(SYSLOG_FACILITY|LOG_NOTICE, fmt, va);
+		break;
+
+	case LF_FILE:
+	case LF_STDERR:
+		now = time(NULL);
+		if (!localtime_r(&now, &tm)) {
+			fprintf(stderr, "localtime_r() failed\n");
+			abort();
+		}
+		if (!strftime(datestr, sizeof(datestr), "%F %T", &tm)) {
+			fprintf(stderr, "strftime() failed\n");
+			abort();
+		}
+		fprintf(logfile, "[%d] %s: ", getpid(), datestr);
+		vfprintf(logfile, fmt, va);
+		break;
+
+	default:
+		fprintf(stderr, "bad logfile type %d\n", config->log.file.type);
+		abort();
+	}
+}
+
+static void log_direct(const char* fmt, ...)
+{
+	va_list va;
+
+	va_start(va, fmt);
+	vlog(fmt, va);
+	va_end(va);
+}
+
+__printf(2, 3) void mlog(unsigned int level, const char* fmt, ...)
 {
 	va_list va;
 	struct message* msg;
 
+	if (config->log.level < level)
+		return;
+
 	va_start(va, fmt);
 	if (opmode == MASTER) {
-		vfprintf(stderr, fmt, va);
+		vlog(fmt, va);
 	} else {
 		msg = new_message(MT_LOGMSG);
 		msg->extra.buf = xvasprintf(fmt, va);
@@ -98,13 +191,13 @@ static void fail_remote(struct remote* rmt, const char* reason)
 {
 	uint64_t tmp, lshift, next_reconnect_delay;
 
-	elog("disconnecting remote '%s': %s\n", rmt->node.name, reason);
+	warn("disconnecting remote '%s': %s\n", rmt->node.name, reason);
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
 
 	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
-		elog("remote '%s' exceeds failure limits, permfailing.\n",
-		     rmt->node.name);
+		errlog("remote '%s' exceeds failure limits, permfailing.\n",
+		       rmt->node.name);
 		rmt->state = CS_PERMFAILED;
 		return;
 	}
@@ -264,7 +357,7 @@ static void setup_remote(struct remote* rmt)
 	sndbuf_sz = 1024;
 	if (setsockopt(sockfds[0], SOL_SOCKET, SO_SNDBUF, &sndbuf_sz,
 	               sizeof(sndbuf_sz)))
-		elog("setsockopt(SO_SNDBUF) failed: %s\n", strerror(errno));
+		warn("setsockopt(SO_SNDBUF) failed: %s\n", strerror(errno));
 
 	rmt->sshpid = fork();
 	if (rmt->sshpid < 0) {
@@ -339,7 +432,7 @@ static void resolve_noderef(struct noderef* n)
 		name = n->name;
 		node = find_node(name);
 		if (!node) {
-			elog("No such remote: '%s'\n", n->name);
+			initerr("No such remote: '%s'\n", n->name);
 			exit(1);
 		}
 		n->type = NT_NODE;
@@ -362,14 +455,14 @@ static void apply_link(struct link* ln)
 
 	assert(ln->a.dir != NO_DIR);
 	if (ln->a.nr.node->neighbors[ln->a.dir])
-		elog("Warning: %s %s neighbor already specified\n",
-		     ln->a.nr.node->name, dirnames[ln->a.dir]);
+		initerr("Warning: %s %s neighbor already specified\n",
+		        ln->a.nr.node->name, dirnames[ln->a.dir]);
 	ln->a.nr.node->neighbors[ln->a.dir] = ln->b.nr.node;
 
 	if (ln->b.dir != NO_DIR) {
 		if (ln->b.nr.node->neighbors[ln->b.dir])
-			elog("Warning: %s %s neighbor already specified\n",
-			     ln->b.nr.node->name, dirnames[ln->b.dir]);
+			initerr("Warning: %s %s neighbor already specified\n",
+			        ln->b.nr.node->name, dirnames[ln->b.dir]);
 		ln->b.nr.node->neighbors[ln->b.dir] = ln->a.nr.node;
 	}
 }
@@ -410,7 +503,8 @@ static void check_remotes(void)
 
 	for_each_remote (rmt) {
 		if (!rmt->reachable)
-			elog("Warning: remote '%s' is not reachable\n", rmt->node.name);
+			initerr("Warning: remote '%s' is not reachable\n",
+			        rmt->node.name);
 
 		num_neighbors = 0;
 		for_each_direction (dir) {
@@ -419,7 +513,8 @@ static void check_remotes(void)
 		}
 
 		if (!num_neighbors)
-			elog("Warning: remote '%s' has no neighbors\n", rmt->node.name);
+			initerr("Warning: remote '%s' has no neighbors\n",
+			        rmt->node.name);
 	}
 }
 
@@ -429,7 +524,7 @@ static void transfer_clipboard(struct node* from, struct node* to)
 	struct message* msg;
 
 	if (is_master(from) && is_master(to)) {
-		elog("switching from master to master??\n");
+		vinfo("switching from master to master??\n");
 		return;
 	}
 
@@ -601,7 +696,7 @@ static void indicate_switch(struct node* from, struct node* to)
 		break;
 
 	default:
-		elog("unknown focus_hint type %d\n", fh->type);
+		errlog("unknown focus_hint type %d\n", fh->type);
 		break;
 	}
 }
@@ -621,7 +716,7 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	if (!n) {
 		to = focused_node;
 	} else if (is_remote(n) && n->remote->state != CS_CONNECTED) {
-		elog("Remote %s not connected, can't focus\n", n->name);
+		info("Remote %s not connected, can't focus\n", n->name);
 		to = focused_node;
 	} else {
 		to = n;
@@ -724,6 +819,9 @@ static void shutdown_master(void)
 	xfree(config->master.name);
 
 	platform_exit();
+
+	if (config->log.file.type == LF_SYSLOG)
+		closelog();
 }
 
 static void action_cb(hotkey_context_t ctx, void* arg)
@@ -742,7 +840,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			focus_node(a->target.nr.node, modkeys, 1);
 			break;
 		default:
-			elog("bad focus-target type %u\n", a->target.type);
+			errlog("bad focus-target type %u\n", a->target.type);
 			break;
 		}
 		break;
@@ -757,12 +855,13 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_QUIT:
+		info("shutting down master on 'quit' action\n");
 		xfree(modkeys);
 		shutdown_master();
 		exit(0);
 
 	default:
-		elog("unknown action type %d\n", a->type);
+		errlog("unknown action type %d\n", a->type);
 		break;
 	}
 
@@ -836,7 +935,7 @@ static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 		break;
 
 	default:
-		elog("bad direction %d in edgeswitch_reposition()\n", dir);
+		errlog("bad direction %d in edgeswitch_reposition()\n", dir);
 		return;
 	}
 
@@ -923,7 +1022,7 @@ static void check_edgeevents(struct node* node, struct xypoint pt)
 		if ((oldmask & dirmask) != (newmask & dirmask)) {
 			edgeevtype = (newmask & dirmask) ? EE_ARRIVE : EE_DEPART;
 			if (trigger_edgeevent(&node->edgehist[dir], dir, edgeevtype, xpos, ypos))
-				elog("out-of-sync edge event on %s ignored\n", node->name);
+				warn("out-of-sync edge event on %s ignored\n", node->name);
 		}
 	}
 }
@@ -947,7 +1046,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		}
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
-		elog("remote '%s' becomes ready...\n", rmt->node.name);
+		info("remote %s becomes ready...\n", rmt->node.name);
 		rmt->node.dimensions = msg->ready.screendim;
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
@@ -968,8 +1067,12 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	case MT_LOGMSG:
 		loglen = msg->extra.len > INT_MAX ? INT_MAX : msg->extra.len;
 		logmsg = msg->extra.buf;
-		elog("%s: %.*s%s", rmt->node.name, loglen, logmsg,
-		     logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
+		/*
+		 * Log-level filtering is done on remotes, so anything the
+		 * master receives goes directly to the log.
+		 */
+		log_direct("%s: %.*s%s", rmt->node.name, loglen, logmsg,
+		           logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
 		break;
 
 	case MT_MOUSEPOS:
@@ -1012,7 +1115,7 @@ int main(int argc, char** argv)
 			exit(0);
 
 		default:
-			elog("Unrecognized option: %c\n", opt);
+			initerr("Unrecognized option: %c\n", opt);
 			exit(1);
 		}
 	}
@@ -1037,39 +1140,46 @@ int main(int argc, char** argv)
 	} else if (argc == 1) {
 		opmode = MASTER;
 	} else {
-		elog("excess arguments\n");
+		initerr("excess arguments\n");
 		exit(1);
 	}
 
 	cfgfile = fopen(argv[0], "r");
 	if (!cfgfile) {
-		elog("%s: %s\n", argv[0], strerror(errno));
+		initerr("%s: %s\n", argv[0], strerror(errno));
 		exit(1);
 	}
 
 	if (fstat(fileno(cfgfile), &st)) {
-		elog("fstat(%s): %s\n", argv[0], strerror(errno));
+		initerr("fstat(%s): %s\n", argv[0], strerror(errno));
 		exit(1);
 	}
 
 	if (st.st_uid != getuid()) {
-		elog("Error: bad ownership on %s\n", argv[0]);
+		initerr("Error: bad ownership on %s\n", argv[0]);
 		exit(1);
 	}
 
 	if (st.st_mode & (S_IWGRP|S_IWOTH)) {
-		elog("Error: bad permissions on %s (writable by others)\n", argv[0]);
+		initerr("Error: bad permissions on %s (writable by others)\n", argv[0]);
 		exit(1);
 	}
 
+	/* Zero is the default for most config settings... */
 	memset(&cfg, 0, sizeof(cfg));
+
+	/* ...except log level. */
+	cfg.log.level = LL_INFO;
+
 	if (parse_cfg(cfgfile, &cfg))
 		exit(1);
 	fclose(cfgfile);
 	config = &cfg;
 
+	init_logfile();
+
 	if (platform_init(mousepos_cb)) {
-		elog("platform_init failed\n");
+		initerr("platform_init failed\n");
 		exit(1);
 	}
 

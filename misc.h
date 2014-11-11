@@ -99,7 +99,23 @@ static inline void fdset_add(int fd, fd_set* set, int* nfds)
 		*nfds = fd + 1;
 }
 
-__printf(1, 2) void elog(const char* fmt, ...);
+enum {
+	LL_ERROR = 1,
+	LL_WARN,
+	LL_INFO,
+	LL_VERBOSE,
+	LL_DEBUG,
+};
+
+__printf(1, 2) void initerr(const char* fmt, ...);
+
+__printf(2, 3) void mlog(unsigned int level, const char* fmt, ...);
+
+#define errlog(fmt, ...) mlog(LL_ERROR, "Error: "fmt, ##__VA_ARGS__)
+#define warn(fmt, ...) mlog(LL_WARN, "Warning: "fmt, ##__VA_ARGS__)
+#define info(fmt, ...) mlog(LL_INFO, fmt, ##__VA_ARGS__)
+#define vinfo(fmt, ...) mlog(LL_VERBOSE, fmt, ##__VA_ARGS__)
+#define debug(fmt, ...) mlog(LL_DEBUG, fmt, ##__VA_ARGS__)
 
 typedef enum {
 	MASTER,

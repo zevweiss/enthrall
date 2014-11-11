@@ -118,7 +118,7 @@ static void mc_write_cb(struct fdmon_ctx* ctx, void* arg)
 	struct msgchan* mc = arg;
 
 	if (!mc_have_outbound_data(mc)) {
-		elog("mc_write_cb() with no outbound data??\n");
+		warn("mc_write_cb() with no outbound data??\n");
 		fdmon_unmonitor(ctx, FM_WRITE);
 		return;
 	}

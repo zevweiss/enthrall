@@ -215,12 +215,27 @@ struct link {
 	struct link* next;
 };
 
+struct logfile {
+	enum {
+		LF_STDERR = 0,
+		LF_FILE,
+		LF_SYSLOG,
+		LF_NONE,
+	} type;
+	char* path;
+};
+
 struct config {
 	char* remote_shell;
 	char* bind_address;
 	struct remote* remotes;
 	struct link* topology;
 	struct hotkey* hotkeys;
+
+	struct {
+		struct logfile file;
+		unsigned int level;
+	} log;
 
 	struct focus_hint focus_hint;
 	struct mouse_switch mouseswitch;

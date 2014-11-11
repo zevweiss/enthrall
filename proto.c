@@ -40,7 +40,7 @@ static uint32_t float_to_fixed(float orig_fp)
 	f_fpart = modff(fp, &f_ipart);
 
 	if (f_ipart > (float)0x7fff) {
-		elog("float_to_fixed() got out-of-range argument: %f\n", orig_fp);
+		errlog("float_to_fixed() got out-of-range argument: %f\n", orig_fp);
 		abort();
 	}
 
