@@ -1000,20 +1000,14 @@ static void handle_event(XEvent* ev)
 		break;
 
 	case GenericEvent:
-		assert(ev->xcookie.type == GenericEvent);
-		if (ev->xcookie.extension == xi2.opcode) {
-			if (XGetEventData(xdisp, &ev->xcookie)) {
-				if (ev->xcookie.evtype == XI_RawMotion)
-					handle_rawmotion(ev->xcookie.data);
-				else
-					elog("unexpected xi2 evtype: %d\n",
-					     ev->xcookie.evtype);
-			} else {
-				elog("XGetEventData() failed on xi2 GenericEvent\n");
-			}
-		} else {
+		if (ev->xcookie.extension != xi2.opcode)
 			elog("unexpected GenericEvent type: %d\n", ev->xcookie.type);
-		}
+		else if (!XGetEventData(xdisp, &ev->xcookie))
+			elog("XGetEventData() failed on xi2 GenericEvent\n");
+		else if (ev->xcookie.evtype != XI_RawMotion)
+			elog("unexpected xi2 evtype: %d\n", ev->xcookie.evtype);
+		else
+			handle_rawmotion(ev->xcookie.data);
 		break;
 
 	case MapNotify:
