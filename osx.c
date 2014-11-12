@@ -975,7 +975,7 @@ static void timer_callback(CFRunLoopTimerRef timer, void* info)
 	xfree(ti);
 }
 
-void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 {
 	struct timerinfo* ti;
 	CFAbsoluteTime firetime;
@@ -997,6 +997,25 @@ void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 	                                 timer_callback, &timer_ctx);
 
 	CFRunLoopAddTimer(CFRunLoopGetMain(), ti->timer, kCFRunLoopCommonModes);
+
+	return ti;
+}
+
+int cancel_call(timer_ctx_t timer)
+{
+	struct timerinfo* ti = timer;
+	CFStringRef mode = kCFRunLoopCommonModes;
+	CFRunLoopRef loop = CFRunLoopGetMain();
+
+	if (!CFRunLoopContainsTimer(loop, ti->timer, mode))
+		return 0;
+
+	CFRunLoopRemoveTimer(loop, ti->timer, mode);
+	CFRelease(ti->timer);
+
+	xfree(ti);
+
+	return 1;
 }
 
 static void check_assistive_device_access(void)

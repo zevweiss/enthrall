@@ -23,7 +23,10 @@ void fdmon_unregister(struct fdmon_ctx* ctx);
 void fdmon_monitor(struct fdmon_ctx* ctx, uint32_t flags);
 void fdmon_unmonitor(struct fdmon_ctx* ctx, uint32_t flags);
 
-void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay);
+typedef void* timer_ctx_t;
+
+timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay);
+int cancel_call(timer_ctx_t timer);
 
 void run_event_loop(void);
 

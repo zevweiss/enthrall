@@ -1191,7 +1191,7 @@ void set_display_brightness(float f)
 	XFlush(xdisp);
 }
 
-void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 {
 	struct scheduled_call* call;
 	struct scheduled_call** prevnext;
@@ -1210,6 +1210,27 @@ void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 
 	newcall->next = call;
 	*prevnext = newcall;
+
+	return newcall;
+}
+
+int cancel_call(timer_ctx_t timer)
+{
+	struct scheduled_call* call;
+	struct scheduled_call** prevnext;
+	struct scheduled_call* target = timer;
+
+	for (prevnext = &scheduled_calls, call = *prevnext;
+	     call;
+	     prevnext = &call->next, call = call->next) {
+		if (call == target) {
+			*prevnext = call->next;
+			xfree(call);
+			return 1;
+		}
+	}
+
+	return 0;
 }
 
 struct fdmon_ctx {
