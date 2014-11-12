@@ -838,9 +838,10 @@ static void shutdown_master(void)
 		closelog();
 }
 
-static void reconnect_remotes(void)
+static int reconnect_remotes(void)
 {
 	struct remote* rmt;
+	int count = 0;
 
 	for_each_remote (rmt) {
 		if (rmt->state == CS_CONNECTED)
@@ -858,11 +859,16 @@ static void reconnect_remotes(void)
 		rmt->failcount = 0;
 
 		setup_remote(rmt);
+
+		count += 1;
 	}
+
+	return count;
 }
 
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
+	int count;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
@@ -882,7 +888,12 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_RECONNECT:
-		reconnect_remotes();
+		count = reconnect_remotes();
+		if (count)
+			info("Attempting reconnection to %d remote%s\n", count,
+			     count == 1 ? "" : "s");
+		else
+			info("All remotes are connected; nothing to do for reconnect.\n");
 		break;
 
 	case AT_QUIT:
