@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include "events.h"
+
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
 struct xypoint {
 	int32_t x;
@@ -138,6 +140,7 @@ struct remote {
 	 * connection has failed.
 	 */
 	int failcount;
+	timer_ctx_t reconnect_timer;
 
 	struct msgchan msgchan;
 

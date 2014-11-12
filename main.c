@@ -190,6 +190,7 @@ static void reconnect_remote_cb(void* arg)
 {
 	struct remote* rmt = arg;
 
+	rmt->reconnect_timer = NULL;
 	setup_remote(rmt);
 }
 
@@ -220,7 +221,8 @@ static void fail_remote(struct remote* rmt, const char* reason)
 
 	next_reconnect_delay = tmp * RECONNECT_INTERVAL_UNIT;
 
-	schedule_call(reconnect_remote_cb, rmt, next_reconnect_delay);
+	rmt->reconnect_timer = schedule_call(reconnect_remote_cb, rmt,
+	                                     next_reconnect_delay);
 }
 
 static void enqueue_message(struct remote* rmt, struct message* msg)
@@ -345,6 +347,8 @@ static void setup_remote(struct remote* rmt)
 	int sockfds[2];
 	struct message* setupmsg;
 	int sndbuf_sz;
+
+	info("initiating connection attempt to remote %s...\n", rmt->node.name);
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfds)) {
 		perror("socketpair");
@@ -834,9 +838,31 @@ static void shutdown_master(void)
 		closelog();
 }
 
-static void action_cb(hotkey_context_t ctx, void* arg)
+static void reconnect_remotes(void)
 {
 	struct remote* rmt;
+
+	for_each_remote (rmt) {
+		if (rmt->state == CS_CONNECTED)
+			continue;
+
+		if (rmt->reconnect_timer) {
+			if (!cancel_call(rmt->reconnect_timer))
+				warn("Failed to cancel reconnect_timer for remote %s\n",
+				     rmt->node.name);
+		}
+
+		if (rmt->state == CS_SETTINGUP)
+			disconnect_remote(rmt);
+
+		rmt->failcount = 0;
+
+		setup_remote(rmt);
+	}
+}
+
+static void action_cb(hotkey_context_t ctx, void* arg)
+{
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
@@ -856,12 +882,7 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_RECONNECT:
-		for_each_remote (rmt) {
-			if (rmt->state == CS_PERMFAILED) {
-				rmt->failcount = 0;
-				setup_remote(rmt);
-			}
-		}
+		reconnect_remotes();
 		break;
 
 	case AT_QUIT:
@@ -1056,7 +1077,9 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		}
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
-		info("remote %s becomes ready...\n", rmt->node.name);
+		info("remote %s becomes ready.\n", rmt->node.name);
+		vinfo("%s screen dimensions: %ux%u\n", rmt->node.name,
+		      msg->ready.screendim.x.max, msg->ready.screendim.y.max);
 		rmt->node.dimensions = msg->ready.screendim;
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
