@@ -44,7 +44,6 @@ typedef enum {
 	CS_FAILED,
 	CS_PERMFAILED,
 	CS_CONNECTED,
-	CS_DISCONNECTED,
 } connstate_t;
 
 typedef enum {
