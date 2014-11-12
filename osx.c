@@ -971,6 +971,8 @@ static void timer_callback(CFRunLoopTimerRef timer, void* info)
 
 	CFRunLoopRemoveTimer(CFRunLoopGetMain(), ti->timer, kCFRunLoopCommonModes);
 	CFRelease(ti->timer);
+
+	xfree(ti);
 }
 
 void schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
