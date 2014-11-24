@@ -24,6 +24,12 @@
 
 #include "cfg-parse.tab.h"
 
+/* Default config values are zero for all but a few things. */
+static struct config global_cfg = {
+	.log.level = LL_INFO,
+};
+static struct config* config = &global_cfg;
+
 struct node* focused_node;
 struct node* last_focused_node;
 opmode_t opmode;
@@ -31,8 +37,6 @@ opmode_t opmode;
 static char* progname;
 static int orig_argc;
 static char** orig_argv;
-
-static struct config* config;
 
 static FILE* logfile;
 
@@ -1327,7 +1331,6 @@ static void usage(FILE* out)
 int main(int argc, char** argv)
 {
 	int opt;
-	struct config cfg;
 	struct remote* rmt;
 	FILE* cfgfile;
 	struct stat st;
@@ -1339,14 +1342,6 @@ int main(int argc, char** argv)
 
 	orig_argc = argc;
 	orig_argv = argv;
-
-	/* Zero is the default for most config settings... */
-	memset(&cfg, 0, sizeof(cfg));
-
-	/* ...except log level. */
-	cfg.log.level = LL_INFO;
-
-	config = &cfg;
 
 	if (strrchr(argv[0], '/'))
 		progname = strrchr(argv[0], '/') + 1;
@@ -1423,9 +1418,9 @@ int main(int argc, char** argv)
 		exit(1);
 	}
 
-	if (!cfg.master.name)
-		cfg.master.name = xstrdup("<master>");
-	get_screen_dimensions(&cfg.master.dimensions);
+	if (!config->master.name)
+		config->master.name = xstrdup("<master>");
+	get_screen_dimensions(&config->master.dimensions);
 
 	apply_topology();
 	check_remotes();
