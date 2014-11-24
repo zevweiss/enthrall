@@ -70,6 +70,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;
 "topology"	return KW_TOPOLOGY;
+"previous"	return KW_PREVIOUS;
 
 "hostname"		return KW_HOSTNAME;
 "port"			return KW_PORT;

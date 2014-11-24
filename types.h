@@ -164,6 +164,7 @@ struct focus_target {
 	enum {
 		FT_DIRECTION,
 		FT_NODE,
+		FT_PREVIOUS,
 	} type;
 	union {
 		direction_t dir;

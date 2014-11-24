@@ -25,6 +25,7 @@
 #include "cfg-parse.tab.h"
 
 struct node* focused_node;
+struct node* last_focused_node;
 opmode_t opmode;
 
 static char* progname;
@@ -742,6 +743,7 @@ static void focus_master(void)
 {
 	ungrab_inputs();
 	set_mousepos(saved_master_mousepos);
+	last_focused_node = focused_node;
 	focused_node = &config->master;
 	indicate_switch(NULL, &config->master);
 }
@@ -793,6 +795,7 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	transfer_clipboard(from, to);
 	transfer_modifiers(from, to, modkeys);
 
+	last_focused_node = focused_node;
 	focused_node = to;
 
 	return 1;
@@ -910,6 +913,9 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			break;
 		case FT_NODE:
 			focus_node(a->target.nr.node, modkeys, 1);
+			break;
+		case FT_PREVIOUS:
+			focus_node(last_focused_node, modkeys, 1);
 			break;
 		default:
 			errlog("bad focus-target type %u\n", a->target.type);
@@ -1426,6 +1432,7 @@ int main(int argc, char** argv)
 	bind_hotkeys();
 
 	focused_node = &config->master;
+	last_focused_node = focused_node;
 
 	for_each_remote (rmt)
 		setup_remote(rmt);
