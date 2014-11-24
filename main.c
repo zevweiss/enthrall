@@ -279,6 +279,9 @@ static void exec_remote_shell(const struct remote* rmt)
 		"-oConnectTimeout=2",
 
 		/* placeholders */
+		NULL, /* -q */
+		NULL, /* -E */
+		NULL, /* logfile */
 		NULL, /* -b */
 		NULL, /* bind address */
 		NULL, /* -oIdentitiesOnly=yes */
@@ -295,6 +298,21 @@ static void exec_remote_shell(const struct remote* rmt)
 	};
 
 	for (nargs = 0; argv[nargs]; nargs++) /* just find first NULL entry */;
+
+	if (config->log.level < LL_WARN)
+		argv[nargs++] = "-q";
+
+	if (config->log.file.type == LF_FILE) {
+		argv[nargs++] = "-E";
+		argv[nargs++] = config->log.file.path;
+	} else if (config->log.file.type == LF_SYSLOG || config->log.file.type == LF_NONE) {
+		/*
+		 * TODO: fork a logger(1) and attach its stdin to ssh's stderr
+		 * for the LF_SYSLOG case?
+		 */
+		argv[nargs++] = "-E";
+		argv[nargs++] = "/dev/null";
+	}
 
 	if (get_port(rmt)) {
 		argv[nargs++] = "-p";
