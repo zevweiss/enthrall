@@ -27,6 +27,10 @@
 /* Default config values are zero for all but a few things. */
 static struct config global_cfg = {
 	.log.level = LL_INFO,
+	.reconnect = {
+		.max_tries = 10,
+		.max_interval = 30 * 1000 * 1000,
+	},
 };
 static struct config* config = &global_cfg;
 
@@ -189,9 +193,11 @@ static void disconnect_remote(struct remote* rmt)
 		focus_master();
 }
 
+/*
+ * Reconnection time-interval computations are done scaled by this factor to
+ * avoid potential overflows
+ */
 #define RECONNECT_INTERVAL_UNIT (500 * 1000) /* half a second */
-#define MAX_RECONNECT_INTERVAL ((30 * 1000 * 1000) / RECONNECT_INTERVAL_UNIT)
-#define MAX_RECONNECT_ATTEMPTS 10
 
 static void reconnect_remote_cb(void* arg)
 {
@@ -209,7 +215,7 @@ static void fail_remote(struct remote* rmt, const char* reason)
 	disconnect_remote(rmt);
 	rmt->failcount += 1;
 
-	if (rmt->failcount > MAX_RECONNECT_ATTEMPTS) {
+	if (rmt->failcount > config->reconnect.max_tries) {
 		errlog("remote '%s' exceeds failure limits, permfailing.\n",
 		       rmt->node.name);
 		rmt->state = CS_PERMFAILED;
@@ -218,13 +224,13 @@ static void fail_remote(struct remote* rmt, const char* reason)
 
 	rmt->state = CS_FAILED;
 
-	/* 0.5s, 1s, 2s, 4s, 8s...capped at MAX_RECONNECT_INTERVAL */
+	/* 0.5s, 1s, 2s, 4s, 8s...capped at config->reconnect.max_interval */
 	lshift = rmt->failcount - 1;
 	if (lshift > (CHAR_BIT * sizeof(uint64_t) - 1))
 		lshift = (CHAR_BIT * sizeof(uint64_t)) - 1;
 	tmp = (1ULL << lshift);
-	if (tmp > MAX_RECONNECT_INTERVAL)
-		tmp = MAX_RECONNECT_INTERVAL;
+	if (tmp > (config->reconnect.max_interval / RECONNECT_INTERVAL_UNIT))
+		tmp = config->reconnect.max_interval / RECONNECT_INTERVAL_UNIT;
 
 	next_reconnect_delay = tmp * RECONNECT_INTERVAL_UNIT;
 

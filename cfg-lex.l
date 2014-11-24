@@ -67,6 +67,9 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "show-null-switch"	return KW_SHOWNULLSWITCH;
 "hotkey-only"		return KW_HOTKEYONLY;
 
+"reconnect-max-interval"	return KW_RECONMAXINT;
+"reconnect-max-tries"		return KW_RECONMAXTRIES;
+
 "master"	return KW_MASTER;
 "remote"	return KW_REMOTE;
 "topology"	return KW_TOPOLOGY;

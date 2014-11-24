@@ -87,7 +87,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_REMOTESHELL KW_BINDADDR KW_HOTKEY KW_FOCUS KW_RECONNECT KW_SLIDE
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
 %token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
-%token KW_PREVIOUS
+%token KW_PREVIOUS KW_RECONMAXINT KW_RECONMAXTRIES
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -279,6 +279,12 @@ master_opt: remoteshell_setting {
 }
 | KW_SHOWNULLSWITCH EQ show_nullswitch {
 	st->cfg->show_nullswitch = $3;
+}
+| KW_RECONMAXTRIES EQ INTEGER {
+	st->cfg->reconnect.max_tries = $3;
+}
+| KW_RECONMAXINT EQ realnum {
+	st->cfg->reconnect.max_interval = (uint64_t)($3 * 1000000);
 }
 | KW_LOGFILE EQ logfile {
 	st->cfg->log.file = $3;

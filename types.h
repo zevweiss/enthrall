@@ -240,6 +240,11 @@ struct config {
 		unsigned int level;
 	} log;
 
+	struct {
+		int max_tries;
+		uint64_t max_interval;
+	} reconnect;
+
 	struct focus_hint focus_hint;
 	struct mouse_switch mouseswitch;
 
