@@ -1183,23 +1183,29 @@ static void handle_message(struct remote* rmt, const struct message* msg)
  */
 static char** get_agent_keylist(void)
 {
-	char* keypath;
+	char keypath[PATH_MAX+1];
 	/* Generous field lengths for keysize, fingerprint, keyfile, and keytype */
 	char linebuf[8 + 48 + PATH_MAX + 16];
 	int i, status, numpaths = 0;
 	char** allpaths = NULL;
 	FILE* listpipe = popen("ssh-add -l", "r");
 
+	/*
+	 * Dynamically constructing a format string to work around lack of
+	 * "%ms" support on pre-POSIX.1-2008 systems...irony?
+	 */
+	char* fmtstr = xasprintf("%%*d %%*s %%%ds %%*s\n", sizeof(keypath));
+
 	while (!feof(listpipe)) {
 		if (!fgets(linebuf, sizeof(linebuf), listpipe)
-		    || sscanf(linebuf, "%*d %*s %ms %*s\n", &keypath) != 1)
+		    || sscanf(linebuf, fmtstr, keypath) != 1)
 			continue;
 
 		allpaths = xrealloc(allpaths, sizeof(*allpaths) * ++numpaths);
 		allpaths[numpaths-1] = xstrdup(keypath);
-
-		free(keypath);
 	}
+
+	xfree(fmtstr);
 
 	allpaths = xrealloc(allpaths, sizeof(*allpaths) * (numpaths+1));
 	allpaths[numpaths] = NULL;
