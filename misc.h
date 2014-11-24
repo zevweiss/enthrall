@@ -189,4 +189,13 @@ void set_clipboard_from_buf(const void* buf, size_t len);
 		return defloat(lo + (frac * (hi - lo))); \
 	}
 
+/* Hackish, sigh...autoconf? */
+#if defined(__APPLE__)
+#include <AvailabilityMacros.h>
+#if !defined(MAC_OS_X_VERSION_10_7)
+#define NEED_COMPAT_STRNLEN 1
+size_t strnlen(const char *s, size_t maxlen);
+#endif
+#endif
+
 #endif /* MISC_H */

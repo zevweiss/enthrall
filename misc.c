@@ -112,6 +112,17 @@ void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
 	return ctx.buf;
 }
 
+#ifdef NEED_COMPAT_STRNLEN
+size_t strnlen(const char *s, size_t maxlen)
+{
+	size_t i;
+
+	for (i = 0; i < maxlen && s[i]; i++);
+
+	return i;
+}
+#endif
+
 /* Inverse of flatten_kvmap(). */
 struct kvmap* unflatten_kvmap(const void* buf, size_t len)
 {
