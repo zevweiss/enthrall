@@ -1204,12 +1204,18 @@ static char** get_agent_keylist(void)
 	allpaths = xrealloc(allpaths, sizeof(*allpaths) * (numpaths+1));
 	allpaths[numpaths] = NULL;
 
+	status = pclose(listpipe);
+	if (status == -1) {
+		perror("pclose");
+		exit(1);
+	}
+	status = WEXITSTATUS(status);
+
 	/*
 	 * From ssh-agent(1): "Exit status is 0 on success, 1 if the specified
 	 * command fails, and 2 if ssh-add is unable to contact the
 	 * authentication agent."
 	 */
-	status = WEXITSTATUS(pclose(listpipe));
 	switch (status) {
 	case 0:
 		break;
