@@ -28,6 +28,8 @@ struct node* focused_node;
 opmode_t opmode;
 
 static char* progname;
+static int orig_argc;
+static char** orig_argv;
 
 static struct config* config;
 
@@ -820,6 +822,12 @@ static void free_remote(struct remote* rmt)
 	xfree(rmt);
 }
 
+/*
+ * The environment variable used to indicate that we've re-execed ourselves
+ * under a new ssh-agent.
+ */
+#define ENTHRALL_AGENT_ENV_VAR "__enthrall_private_agent__"
+
 static void shutdown_master(void)
 {
 	struct remote* rmt;
@@ -851,6 +859,10 @@ static void shutdown_master(void)
 	xfree(config->master.name);
 
 	platform_exit();
+
+	/* If we re-execed under a private agent, unload keys & kill it now. */
+	if (getenv(ENTHRALL_AGENT_ENV_VAR))
+		system("ssh-add -D 2>/dev/null; ssh-agent -k >/dev/null");
 
 	if (config->log.file.type == LF_SYSLOG)
 		closelog();
@@ -1147,6 +1159,160 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	}
 }
 
+/*
+ * On success, returns a pointer to a NULL-terminated array of strings of the
+ * paths of the keys currently loaded in to the ssh-agent.  On failure
+ * (e.g. no agent found) returns NULL, though this is distinct from returning
+ * an empty list (which ssh-add still regards as failure).
+ */
+static char** get_agent_keylist(void)
+{
+	char* keypath;
+	/* Generous field lengths for keysize, fingerprint, keyfile, and keytype */
+	char linebuf[8 + 48 + PATH_MAX + 16];
+	int i, status, numpaths = 0;
+	char** allpaths = NULL;
+	FILE* listpipe = popen("ssh-add -l", "r");
+
+	while (!feof(listpipe)) {
+		if (!fgets(linebuf, sizeof(linebuf), listpipe)
+		    || sscanf(linebuf, "%*d %*s %ms %*s\n", &keypath) != 1)
+			continue;
+
+		allpaths = xrealloc(allpaths, sizeof(*allpaths) * ++numpaths);
+		allpaths[numpaths-1] = xstrdup(keypath);
+
+		free(keypath);
+	}
+
+	allpaths = xrealloc(allpaths, sizeof(*allpaths) * (numpaths+1));
+	allpaths[numpaths] = NULL;
+
+	/*
+	 * From ssh-agent(1): "Exit status is 0 on success, 1 if the specified
+	 * command fails, and 2 if ssh-add is unable to contact the
+	 * authentication agent."
+	 */
+	status = WEXITSTATUS(pclose(listpipe));
+	switch (status) {
+	case 0:
+		break;
+
+	case 2:
+		initerr("failed to retrieve key list from ssh-agent\n");
+		for (i = 0; allpaths[i]; i++)
+			xfree(allpaths[i]);
+		xfree(allpaths);
+		allpaths = NULL;
+		break;
+
+	default:
+		if (numpaths != 0)
+			initerr("'ssh-add -l' exited %d despite listing %d keys?\n",
+			        status, numpaths);
+		break;
+	}
+
+	return allpaths;
+}
+
+/*
+ * Re-exec ourselves under our own "private" ssh-agent.  We do this, rather
+ * than just ssh-add any needed keys to whatever agent we may have started
+ * under, in order to avoid treading on the user's "global" session state (if
+ * they want the enthrall keys in their session's agent they can add them
+ * manually before starting it; if they *don't* want that we shouldn't
+ * override that and insert the enthrall key(s) into their agent, so we
+ * instead start our own and add them to it instead).
+ */
+static void ssh_agent_reexec(void)
+{
+	int i;
+	char** argv = xmalloc((orig_argc + 2) * sizeof(*argv));
+
+	setenv(ENTHRALL_AGENT_ENV_VAR, "1", 1);
+
+	argv[0] = "ssh-agent";
+	for (i = 0; i < orig_argc; i++)
+		argv[i+1] = orig_argv[i];
+	argv[orig_argc+1] = NULL;
+
+	execvp("ssh-agent", argv);
+
+	perror("ssh-agent");
+	exit(1);
+}
+
+/* Add the given ssh key file to the current ssh-agent */
+static void load_id(char* keyfile, char*** keylist)
+{
+	int i, numkeys, status;
+	pid_t pid;
+	char* argv[3] = { "ssh-add", keyfile, NULL, };
+
+	/* Check if we've already loaded this key */
+	for (i = 0; (*keylist)[i]; i++) {
+		if (!strcmp(keyfile, (*keylist)[i]))
+			return;
+	}
+	numkeys = i;
+
+	pid = fork();
+	if (!pid) {
+		execvp("ssh-add", argv);
+		perror("ssh-add");
+		exit(1);
+	}
+
+	if (waitpid(pid, &status, 0) != pid) {
+		perror("waitpid");
+		exit(1);
+	}
+
+	if (WEXITSTATUS(status)) {
+		initerr("failed to add ssh key %s\n", keyfile);
+		exit(1);
+	} else {
+		/* Add keyfile to the list of loaded keys */
+		*keylist = xrealloc(*keylist, sizeof(**keylist) * (numkeys+2));
+		(*keylist)[numkeys] = xstrdup(keyfile);
+		(*keylist)[numkeys+1] = NULL;
+	}
+}
+
+/* Ensure any ssh keys we'll be needing are loaded into an ssh-agent */
+static void ssh_pubkey_setup(void)
+{
+	int i;
+	struct remote* rmt;
+	char** agentkeys = get_agent_keylist();
+
+	if (!agentkeys) {
+		if (!getenv(ENTHRALL_AGENT_ENV_VAR)) {
+			initerr("re-execing under private ssh-agent\n");
+			ssh_agent_reexec();
+		} else {
+			initerr("get_agent_keylist() failed under private ssh-agent??\n");
+			exit(1);
+		}
+	}
+
+	if (config->ssh_defaults.identityfile)
+		load_id(config->ssh_defaults.identityfile, &agentkeys);
+
+	for_each_remote (rmt) {
+		if (rmt->sshcfg.identityfile)
+			load_id(rmt->sshcfg.identityfile, &agentkeys);
+	}
+
+	if (!agentkeys[0])
+		system("ssh-add");
+
+	for (i = 0; agentkeys[i]; i++)
+		xfree(agentkeys[i]);
+	xfree(agentkeys);
+}
+
 static void usage(FILE* out)
 {
 	fprintf(out, "Usage: %s CONFIGFILE\n", progname);
@@ -1164,6 +1330,9 @@ int main(int argc, char** argv)
 		{ "help", no_argument, NULL, 'h', },
 		{ NULL, 0, NULL, 0, },
 	};
+
+	orig_argc = argc;
+	orig_argv = argv;
 
 	/* Zero is the default for most config settings... */
 	memset(&cfg, 0, sizeof(cfg));
@@ -1238,6 +1407,8 @@ int main(int argc, char** argv)
 	if (parse_cfg(cfgfile, config))
 		exit(1);
 	fclose(cfgfile);
+
+	ssh_pubkey_setup();
 
 	init_logfile();
 
