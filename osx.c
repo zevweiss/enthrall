@@ -752,13 +752,13 @@ char* get_clipboard_text(void)
 	status = PasteboardGetItemIdentifier(clipboard, 1, &itemid);
 	if (status != noErr) {
 		errlog("PasteboardGetItemIdentifier(1) failed (%d)\n", status);
-		return NULL;
+		return xstrdup("");
 	}
 
 	status = PasteboardCopyItemFlavorData(clipboard, itemid, PLAINTEXT, &data);
 	if (status != noErr) {
 		errlog("PasteboardCopyItemFlavorData(PLAINTEXT) failed (%d)\n", status);
-		return NULL;
+		return xstrdup("");
 	}
 
 	len = CFDataGetLength(data);
