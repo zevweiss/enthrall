@@ -762,7 +762,7 @@ char* get_clipboard_text(void)
 	}
 
 	len = CFDataGetLength(data);
-	txt = malloc(len+1);
+	txt = xmalloc(len+1);
 	memcpy(txt, CFDataGetBytePtr(data), len);
 	txt[len] = '\0';
 
