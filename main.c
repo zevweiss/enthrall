@@ -244,28 +244,6 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 		fail_remote(rmt, "send backlog exceeded");
 }
 
-struct scheduled_message {
-	struct remote* rmt;
-	struct message* msg;
-};
-
-static void scheduled_message_cb(void* arg)
-{
-	struct scheduled_message* sm = arg;
-
-	enqueue_message(sm->rmt, sm->msg);
-
-	xfree(sm);
-}
-
-static void schedule_message(struct remote* rmt, struct message* newmsg, uint64_t delay)
-{
-	struct scheduled_message* sm = xmalloc(sizeof(*sm));
-	sm->rmt = rmt;
-	sm->msg = newmsg;
-	schedule_call(scheduled_message_cb, sm, delay);
-}
-
 #define SSH_DEFAULT(type, name) \
 	static inline type get_##name(const struct remote* rmt) \
 	{ \
@@ -674,29 +652,28 @@ static void set_node_display_brightness(struct node* node, float f)
 		send_setbrightness(node->remote, f);
 }
 
+struct setbrightness_cb_args {
+	struct node* node;
+	float brightness;
+};
+
 static void set_brightness_cb(void* arg)
 {
-	float* fp = arg;
+	struct setbrightness_cb_args* args = arg;
 
-	set_display_brightness(*fp);
+	set_node_display_brightness(args->node, args->brightness);
 
-	xfree(fp);
+	xfree(args);
 }
 
 static void schedule_brightness_change(struct node* node, float f, uint64_t delay)
 {
-	struct message* msg;
-	float* fp;
+	struct setbrightness_cb_args* args = xmalloc(sizeof(*args));
 
-	if (is_remote(node)) {
-		msg = new_message(MT_SETBRIGHTNESS);
-		msg->setbrightness.brightness = f;
-		schedule_message(node->remote, msg, delay);
-	} else {
-		fp = xmalloc(sizeof(*fp));
-		*fp = f;
-		schedule_call(set_brightness_cb, fp, delay);
-	}
+	args->node = node;
+	args->brightness = f;
+
+	schedule_call(set_brightness_cb, args, delay);
 }
 
 static void transition_brightness(struct node* node, float from, float to,
