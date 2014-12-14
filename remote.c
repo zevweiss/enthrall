@@ -9,12 +9,9 @@
 /* msgchan attached to stdin & stdout  */
 struct msgchan stdio_msgchan;
 
-struct kvmap* remote_params;
-
 static void shutdown_remote(void)
 {
 	mc_close(&stdio_msgchan);
-	destroy_kvmap(remote_params);
 	platform_exit();
 }
 
@@ -71,6 +68,7 @@ static void handle_message(const struct message* msg)
 static void handle_setup_msg(const struct message* msg)
 {
 	struct message* readymsg;
+	struct kvmap* params;
 
 	if (msg->type != MT_SETUP) {
 		errlog("unexpected message type %u instead of SETUP\n", msg->type);
@@ -84,16 +82,18 @@ static void handle_setup_msg(const struct message* msg)
 
 	set_loglevel(msg->setup.loglevel);
 
-	remote_params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
-	if (!remote_params) {
+	params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
+	if (!params) {
 		errlog("failed to unflatted remote-params kvmap\n");
 		exit(1);
 	}
 
-	if (platform_init(NULL) < 0) {
+	if (platform_init(params, NULL) < 0) {
 		errlog("platform_init() failed\n");
 		exit(1);
 	}
+
+	destroy_kvmap(params);
 
 	readymsg = new_message(MT_READY);
 	get_screen_dimensions(&readymsg->ready.screendim);

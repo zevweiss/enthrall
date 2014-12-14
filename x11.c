@@ -556,7 +556,7 @@ static int xerr_abort(Display* d, XErrorEvent* xev)
 	abort();
 }
 
-int platform_init(mousepos_handler_t* mouse_handler)
+int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 {
 	int status;
 	unsigned int i;
@@ -565,8 +565,8 @@ int platform_init(mousepos_handler_t* mouse_handler)
 	XColor black = { .red = 0, .green = 0, .blue = 0, };
 	unsigned long blackpx;
 
-	if (opmode == REMOTE && kvmap_get(remote_params, "DISPLAY"))
-		setenv("DISPLAY", kvmap_get(remote_params, "DISPLAY"), 1);
+	if (params && kvmap_get(params, "DISPLAY"))
+		setenv("DISPLAY", kvmap_get(params, "DISPLAY"), 1);
 
 	XSetErrorHandler(xerr_abort);
 

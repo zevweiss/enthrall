@@ -1431,7 +1431,7 @@ int main(int argc, char** argv)
 
 	init_logfile();
 
-	if (platform_init(mousepos_cb)) {
+	if (platform_init(NULL, mousepos_cb)) {
 		initerr("platform_init failed\n");
 		exit(1);
 	}

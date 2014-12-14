@@ -138,7 +138,6 @@ static inline int is_master(struct node* n)
 
 void run_remote(void);
 void set_loglevel(unsigned int level);
-extern struct kvmap* remote_params;
 extern struct msgchan stdio_msgchan;
 
 void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr);

@@ -39,7 +39,7 @@ void get_screen_dimensions(struct rectangle* d);
 
 typedef void (mousepos_handler_t)(struct xypoint pt);
 
-int platform_init(mousepos_handler_t* edge_handler);
+int platform_init(struct kvmap* params, mousepos_handler_t* edge_handler);
 void platform_exit(void);
 
 #endif /* PLATFORM_H */

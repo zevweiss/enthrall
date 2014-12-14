@@ -144,7 +144,7 @@ extern CGSConnectionID _CGSDefaultConnection(void);
 /* "128 displays oughta be enough for anyone..." */
 #define MAX_DISPLAYS 128
 
-int platform_init(mousepos_handler_t* mouse_handler)
+int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 {
 	CGDirectDisplayID displayids[MAX_DISPLAYS];
 	CGError cgerr;
