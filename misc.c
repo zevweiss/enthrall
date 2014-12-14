@@ -7,6 +7,7 @@
 #include "kvmap.h"
 #include "platform.h"
 
+/* Return the current value of fd's O_NONBLOCK flag */
 int get_fd_nonblock(int fd)
 {
 	int flags = fcntl(fd, F_GETFL);
@@ -19,6 +20,7 @@ int get_fd_nonblock(int fd)
 	return !!(flags & O_NONBLOCK);
 }
 
+/* Set fd's O_NONBLOCK flag to 'nb' */
 void set_fd_nonblock(int fd, int nb)
 {
 	int flags = fcntl(fd, F_GETFL);
@@ -39,6 +41,7 @@ void set_fd_nonblock(int fd, int nb)
 	}
 }
 
+/* Set fd's FD_CLOEXEC flag to 'ce' */
 void set_fd_cloexec(int fd, int ce)
 {
 	int flags = fcntl(fd, F_GETFD);
@@ -59,6 +62,10 @@ void set_fd_cloexec(int fd, int ce)
 	}
 }
 
+/*
+ * Perform shell-like word expansion on a string (so we can have conveniences
+ * like "~" to refer to home directories in paths in config files).
+ */
 char* expand_word(const char* wd)
 {
 	char* ret;
@@ -83,6 +90,7 @@ struct kvmflatten_ctx {
 	size_t len;
 };
 
+/* kvmap_foreach() callback used for flattening a kvmap into a buffer */
 static void flattencb(const char* key, const char* value, void* arg)
 {
 	struct kvmflatten_ctx* ctx = arg;
@@ -112,6 +120,10 @@ void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
 	return ctx.buf;
 }
 
+/*
+ * Non-POSIX.1-2008-compliant systems (e.g. Mac OS X 10.6) may not have
+ * strnlen(3), sadly.
+ */
 #ifdef NEED_COMPAT_STRNLEN
 size_t strnlen(const char *s, size_t maxlen)
 {
@@ -157,6 +169,10 @@ err:
 	return NULL;
 }
 
+/*
+ * Small helper to tack a NUL-terminator onto a buffer (presumably from a
+ * message) containing a string and set the clipboard from it.
+ */
 void set_clipboard_from_buf(const void* buf, size_t len)
 {
 	char* tmp;

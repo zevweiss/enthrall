@@ -2,6 +2,10 @@
 #include "misc.h"
 #include "msgchan.h"
 
+/*
+ * If there's at least one message in the send queue, pull one off and return
+ * it; otherwise return NULL.
+ */
 static struct message* mc_dequeue_message(struct msgchan* mc)
 {
 	struct message* msg;
@@ -18,7 +22,7 @@ static struct message* mc_dequeue_message(struct msgchan* mc)
 	return msg;
 }
 
-
+/* Clear inbound & outbound message buffers */
 void mc_clear(struct msgchan* mc)
 {
 	struct message* msg;
@@ -36,8 +40,16 @@ void mc_clear(struct msgchan* mc)
 	mc->recv_msgbuf.bytes_recvd = 0;
 }
 
+/*
+ * Mamimum number of messages we'll buffer up in a msgchan's send queue before
+ * calling the error handler.
+ */
 #define MAX_SEND_BACKLOG 64
 
+/*
+ * Enqueue a message to be sent.  Returns 0 on success, non-zero if the send
+ * backlog is exceeded (i.e. if the send FD has blocked for too long).
+ */
 int mc_enqueue_message(struct msgchan* mc, struct message* msg)
 {
 	msg->next = NULL;
@@ -54,8 +66,9 @@ int mc_enqueue_message(struct msgchan* mc, struct message* msg)
 }
 
 /*
- * Returns positive if some data was sent, zero if nothing was queued, and
- * negative on error.
+ * Attempt to finish sending an in-progress message or start sending the next
+ * one in the send queue.  Returns positive if some data was sent, zero if
+ * nothing was queued, and negative on error.
  */
 static int send_message(struct msgchan* mc)
 {
@@ -75,6 +88,11 @@ static int send_message(struct msgchan* mc)
 	return status < 0 ? status : 1;
 }
 
+/*
+ * Read in (possibly only part of) a message.  Returns positive if a complete
+ * message has been read, zero if the incoming message is still incomplete,
+ * and negative on error.
+ */
 static int recv_message(struct msgchan* mc, struct message* msg)
 {
 	int status;
@@ -87,6 +105,11 @@ static int recv_message(struct msgchan* mc, struct message* msg)
 	return 1;
 }
 
+/*
+ * fdmon callback for a msgchan's receive-side file descriptor (called when
+ * the file descriptor is ready to be read).  Attemps to pull in a message,
+ * calling the msgchan's recv callback if a complete message has arrived.
+ */
 static void mc_read_cb(struct fdmon_ctx* ctx, void* arg)
 {
 	struct msgchan* mc;
@@ -107,11 +130,18 @@ static void mc_read_cb(struct fdmon_ctx* ctx, void* arg)
 	}
 }
 
+/* Does this msgchan have any data to be sent? */
 static inline int mc_have_outbound_data(const struct msgchan* mc)
 {
 	return mc->send_msgbuf.msgbuf || mc->sendqueue.head;
 }
 
+/*
+ * fdmon callback for a msgchan's send-side file descriptor (called when the
+ * file descriptor is ready to be written to).  Attempts to complete the
+ * transmission of a partially-sent message if one is in progress, or starts
+ * sending the next message in the send queue (perhaps completing it).
+ */
 static void mc_write_cb(struct fdmon_ctx* ctx, void* arg)
 {
 	int status;
@@ -135,6 +165,7 @@ static void mc_write_cb(struct fdmon_ctx* ctx, void* arg)
 		fdmon_unmonitor(ctx, FM_WRITE);
 }
 
+/* Initialize a msgchan with the given send/recv FDs and callbacks. */
 void mc_init(struct msgchan* mc, int send_fd, int recv_fd, mc_recv_cb_t recv_cb,
              mc_err_cb_t err_cb, void* cb_arg)
 {
@@ -156,6 +187,7 @@ void mc_init(struct msgchan* mc, int send_fd, int recv_fd, mc_recv_cb_t recv_cb,
 	fdmon_monitor(mc->recv.mon, FM_READ);
 }
 
+/* Tear down a msgchan, closing its send/recv file descriptors. */
 void mc_close(struct msgchan* mc)
 {
 	mc_clear(mc);

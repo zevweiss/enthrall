@@ -65,6 +65,7 @@ static void handle_message(const struct message* msg)
 	}
 }
 
+/* Initialize the remote after receiving a SETUP message */
 static void handle_setup_msg(const struct message* msg)
 {
 	struct message* readymsg;
@@ -100,6 +101,7 @@ static void handle_setup_msg(const struct message* msg)
 	mc_enqueue_message(&stdio_msgchan, readymsg);
 }
 
+/* msgchan callback to handle received messages */
 static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 {
 	static int initialized = 0;

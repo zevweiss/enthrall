@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+/* Opaque context for a monitored file descriptor */
 struct fdmon_ctx;
 
 typedef void (*fdmon_callback_t)(struct fdmon_ctx* ctx, void* arg);

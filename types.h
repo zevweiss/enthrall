@@ -17,6 +17,7 @@ struct range {
 	int32_t max;
 };
 
+/* An area of screen space (used for recording screen dimensions) */
 struct rectangle {
 	struct range x;
 	struct range y;
@@ -35,11 +36,13 @@ typedef enum {
 /* Platform-independent internal representation of a keyboard key */
 typedef uint32_t keycode_t;
 
+/* Whether a given keystroke/mouse-click is a press or release */
 typedef enum {
 	PR_PRESS = 1,
 	PR_RELEASE,
 } pressrel_t;
 
+/* Different states a remote connection can be in at any given time */
 typedef enum {
 	CS_NEW = 0,
 	CS_SETTINGUP,
@@ -68,6 +71,7 @@ typedef uint32_t dirmask_t;
 
 #define ALLDIRS_MASK (LEFTMASK|RIGHTMASK|UPMASK|DOWNMASK)
 
+/* Configuration options used to set command-line arguments when invoking ssh */
 struct ssh_config {
 	char* remoteshell;
 	int port;
@@ -77,6 +81,7 @@ struct ssh_config {
 	char* remotecmd;
 };
 
+/* Types of "edge events" (mouse pointer arriving at or leaving a screen edge) */
 typedef enum {
 	EE_DEPART,
 	EE_ARRIVE,
@@ -127,12 +132,16 @@ struct remote {
 
 	char* hostname;
 
+	/* how to invoke ssh to this remote */
 	struct ssh_config sshcfg;
 
+	/* miscellaneous extra parameters from config file */
 	struct kvmap* params;
 
 	/* connection state */
 	connstate_t state;
+
+	/* pid of the ssh process we're connected via */
 	pid_t sshpid;
 
 	/*
@@ -140,18 +149,26 @@ struct remote {
 	 * connection has failed.
 	 */
 	int failcount;
+
+	/* timer for determing when to next attempt a reconnect */
 	timer_ctx_t reconnect_timer;
 
+	/* msgchan by which the master exchanges messages with this remote */
 	struct msgchan msgchan;
 
+	/* for linking into a list of remotes */
 	struct remote* next;
 };
 
+/*
+ * A reference to a node; starts as a string (the node's name) after
+ * config-file parsing and then gets resolved to an actual node during
+ * setup/initialization.
+ */
 struct noderef {
 	enum {
 		/* initial state before a name gets resolved to a node */
 		NT_TMPNAME,
-
 		NT_NODE,
 	} type;
 	union {
@@ -160,6 +177,7 @@ struct noderef {
 	};
 };
 
+/* Things that can go in a 'focus' hotkey action. */
 struct focus_target {
 	enum {
 		FT_DIRECTION,
@@ -172,6 +190,7 @@ struct focus_target {
 	};
 };
 
+/* Actions that can be assigned to a hotkey */
 struct action {
 	enum {
 		AT_FOCUS,
@@ -183,12 +202,19 @@ struct action {
 	};
 };
 
+/* A user-configured hotkey */
 struct hotkey {
+	/* Platform-dependent string encoding the key(s) */
 	char* key_string;
+
+	/* Action to perform when pressed */
 	struct action action;
+
+	/* for linking into a list of hotkeys */
 	struct hotkey* next;
 };
 
+/* Different ways focus can be visually indicated */
 struct focus_hint {
 	enum {
 		FH_NONE = 0,
@@ -200,6 +226,7 @@ struct focus_hint {
 	int fade_steps;
 };
 
+/* Configurable ways of switching focus with the mouse */
 struct mouse_switch {
 	enum {
 		MS_NONE = 0,
@@ -209,6 +236,7 @@ struct mouse_switch {
 	uint64_t window;
 };
 
+/* A link in the node topology graph */
 struct link {
 	struct {
 		struct noderef nr;
@@ -218,6 +246,7 @@ struct link {
 	struct link* next;
 };
 
+/* Options for log message destination */
 struct logfile {
 	enum {
 		LF_STDERR = 0,

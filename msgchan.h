@@ -1,5 +1,9 @@
 /*
- * Bidirectional message channels.
+ * Bidirectional async message channels.
+ *
+ * On the sending path, buffers messages if the output file descriptor blocks.
+ *
+ * On the receiving path, calls a handler function when a message is received.
  */
 
 #ifndef MSGCHAN_H
@@ -23,12 +27,19 @@ struct msgchan {
 	struct partrecv recv_msgbuf;
 	struct partsend send_msgbuf;
 
+	/* Callbacks */
 	struct {
+		/* Called when a message is received */
 		mc_recv_cb_t recv;
+
+		/* Called on error */
 		mc_err_cb_t err;
+
+		/* Opaque argument passed to callbacks */
 		void* arg;
 	} cb;
 
+	/* Buffer of pending messages to be sent */
 	struct {
 		struct message* head;
 		struct message* tail;
