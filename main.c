@@ -810,6 +810,16 @@ static void free_remote(struct remote* rmt)
 	xfree(rmt);
 }
 
+static int run_command(const char* cmd, int must_succeed)
+{
+	int status = system(cmd);
+
+	if (must_succeed)
+		return status == -1 || WEXITSTATUS(status);
+	else
+		return 0;
+}
+
 /*
  * The environment variable used to indicate that we've re-execed ourselves
  * under a new ssh-agent.
@@ -850,7 +860,7 @@ static void shutdown_master(void)
 
 	/* If we re-execed under a private agent, unload keys & kill it now. */
 	if (getenv(ENTHRALL_AGENT_ENV_VAR))
-		system("ssh-add -D 2>/dev/null; ssh-agent -k >/dev/null");
+		run_command("ssh-add -D 2>/dev/null; ssh-agent -k >/dev/null", 0);
 
 	if (config->log.file.type == LF_SYSLOG)
 		closelog();
@@ -1307,8 +1317,12 @@ static void ssh_pubkey_setup(void)
 			load_id(rmt->sshcfg.identityfile, &agentkeys);
 	}
 
-	if (!agentkeys[0])
-		system("ssh-add");
+	if (!agentkeys[0]) {
+		if (run_command("ssh-add", 1)) {
+			initerr("failed to add keys to ssh agent\n");
+			exit(1);
+		}
+	}
 
 	for (i = 0; agentkeys[i]; i++)
 		xfree(agentkeys[i]);
