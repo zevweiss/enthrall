@@ -30,10 +30,10 @@ void mc_clear(struct msgchan* mc)
 	while ((msg = mc_dequeue_message(mc)))
 		free_message(msg);
 
-	xfree(mc->send_msgbuf.msgbuf);
-	mc->send_msgbuf.msgbuf = NULL;
+	xfree(mc->send_msgbuf.buf);
+	mc->send_msgbuf.buf = NULL;
 	mc->send_msgbuf.bytes_sent = 0;
-	mc->send_msgbuf.msg_len = 0;
+	mc->send_msgbuf.len = 0;
 
 	xfree(mc->recv_msgbuf.plbuf);
 	mc->recv_msgbuf.plbuf = NULL;
@@ -75,10 +75,11 @@ static int send_message(struct msgchan* mc)
 	int status;
 	struct message* msg;
 
-	if (!mc->send_msgbuf.msgbuf) {
+	if (!mc->send_msgbuf.buf) {
 		msg = mc_dequeue_message(mc);
 		if (!msg)
 			return 0;
+		mc->send_msgbuf.bytes_sent = 0;
 		unparse_message(msg, &mc->send_msgbuf);
 		free_message(msg);
 	}
@@ -116,6 +117,13 @@ static void mc_read_cb(struct fdmon_ctx* ctx, void* arg)
 	struct message msg;
 	int status;
 
+	/*
+	 * Apparently the XDR code requires this, though I can't find it
+	 * documented anywhere (sigh).  Without it, anything involving
+	 * pointers inside msg.body (strings, arrays) goes haywire.
+	 */
+	memset(&msg.body, 0, sizeof(msg.body));
+
 	mc = arg;
 
 	status = recv_message(mc, &msg);
@@ -125,15 +133,14 @@ static void mc_read_cb(struct fdmon_ctx* ctx, void* arg)
 		mc->cb.err(mc, mc->cb.arg);
 	else {
 		mc->cb.recv(mc, &msg, mc->cb.arg);
-		if (msg.extra.len)
-			xfree(msg.extra.buf);
+		free_msgbody(&msg);
 	}
 }
 
 /* Does this msgchan have any data to be sent? */
 static inline int mc_have_outbound_data(const struct msgchan* mc)
 {
-	return mc->send_msgbuf.msgbuf || mc->sendqueue.head;
+	return mc->send_msgbuf.buf || mc->sendqueue.head;
 }
 
 /*

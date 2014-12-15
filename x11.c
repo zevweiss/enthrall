@@ -19,8 +19,6 @@
 #include "platform.h"
 #include "x11-keycodes.h"
 
-#include "proto.h"
-
 static Display* xdisp = NULL;
 static Window xrootwin;
 static Window xwin;

@@ -86,87 +86,46 @@ char* expand_word(const char* wd)
 }
 
 struct kvmflatten_ctx {
-	char* buf;
-	size_t len;
+	struct kvpair* pairs;
+	u_int numpairs;
 };
 
-/* kvmap_foreach() callback used for flattening a kvmap into a buffer */
+/* kvmap_foreach() callback used for flattening a kvmap into a pair array */
 static void flattencb(const char* key, const char* value, void* arg)
 {
 	struct kvmflatten_ctx* ctx = arg;
-	size_t klen = strlen(key), vlen = strlen(value);
-	size_t newlen = ctx->len + klen + 1 + vlen + 1;
 
-	ctx->buf = xrealloc(ctx->buf, newlen);
-	strcpy(ctx->buf + ctx->len, key);
-	ctx->len += klen + 1;
-	strcpy(ctx->buf + ctx->len, value);
-	ctx->len += vlen + 1;
+	ctx->pairs = xrealloc(ctx->pairs, (ctx->numpairs + 1) * sizeof(*ctx->pairs));
+	ctx->pairs[ctx->numpairs].key = xstrdup(key);
+	ctx->pairs[ctx->numpairs].value = xstrdup(value);
+	ctx->numpairs++;
 }
 
 /*
- * Turn a kvmap into a flat buffer of concatenated NUL-terminated strings
- * (e.g. "key1\0value1\0key2\0value2\0"), returning the total combined length
- * of the buffer in *len.
+ * Turn a kvmap into an array of struct kvpairs, returning the number of
+ * kvpairs in *numpairs.
  */
-void* flatten_kvmap(const struct kvmap* kvm, size_t* len)
+struct kvpair* flatten_kvmap(const struct kvmap* kvm, u_int* numpairs)
 {
-	struct kvmflatten_ctx ctx = { .buf = NULL, .len = 0, };
+	struct kvmflatten_ctx ctx = { .pairs = NULL, .numpairs = 0, };
 
 	kvmap_foreach(kvm, flattencb, &ctx);
 
-	*len = ctx.len;
+	*numpairs = ctx.numpairs;
 
-	return ctx.buf;
+	return ctx.pairs;
 }
-
-/*
- * Non-POSIX.1-2008-compliant systems (e.g. Mac OS X 10.6) may not have
- * strnlen(3), sadly.
- */
-#ifdef NEED_COMPAT_STRNLEN
-size_t strnlen(const char *s, size_t maxlen)
-{
-	size_t i;
-
-	for (i = 0; i < maxlen && s[i]; i++);
-
-	return i;
-}
-#endif
 
 /* Inverse of flatten_kvmap(). */
-struct kvmap* unflatten_kvmap(const void* buf, size_t len)
+struct kvmap* unflatten_kvmap(const struct kvpair* pairs, u_int numpairs)
 {
-	const char* k;
-	const char* v;
-	const char* p = buf;
-	size_t klen, vlen, remaining = len;
+	int i;
 	struct kvmap* kvm = new_kvmap();
 
-	while (remaining > 0) {
-		k = p;
-		klen = strnlen(p, remaining);
-		if (klen == remaining)
-			goto err;
-		p += klen + 1;
-		remaining -= klen + 1;
-
-		v = p;
-		vlen = strnlen(p, remaining);
-		if (vlen == remaining)
-			goto err;
-		p += vlen + 1;
-		remaining -= vlen + 1;
-
-		kvmap_put(kvm, k, v);
-	}
+	for (i = 0; i < numpairs; i++)
+		kvmap_put(kvm, pairs[i].key, pairs[i].value);
 
 	return kvm;
-
-err:
-	destroy_kvmap(kvm);
-	return NULL;
 }
 
 /*

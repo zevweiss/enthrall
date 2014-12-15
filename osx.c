@@ -17,7 +17,6 @@
 
 #include "types.h"
 #include "misc.h"
-#include "proto.h"
 #include "platform.h"
 #include "osx-keycodes.h"
 #include "events.h"

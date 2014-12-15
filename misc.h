@@ -151,8 +151,8 @@ void set_fd_cloexec(int fd, int ce);
 
 char* expand_word(const char* wd);
 
-void* flatten_kvmap(const struct kvmap* kvm, size_t* len);
-struct kvmap* unflatten_kvmap(const void* buf, size_t len);
+struct kvpair* flatten_kvmap(const struct kvmap* kvm, u_int* numpairs);
+struct kvmap* unflatten_kvmap(const struct kvpair* pairs, u_int numpairs);
 
 void set_clipboard_from_buf(const void* buf, size_t len);
 
@@ -187,14 +187,5 @@ void set_clipboard_from_buf(const void* buf, size_t len);
 		\
 		return defloat(lo + (frac * (hi - lo))); \
 	}
-
-/* Hackish, sigh...autoconf? */
-#if defined(__APPLE__)
-#include <AvailabilityMacros.h>
-#if !defined(MAC_OS_X_VERSION_10_7)
-#define NEED_COMPAT_STRNLEN 1
-size_t strnlen(const char *s, size_t maxlen);
-#endif
-#endif
 
 #endif /* MISC_H */

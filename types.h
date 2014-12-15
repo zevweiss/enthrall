@@ -6,23 +6,6 @@
 
 #include "events.h"
 
-/* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
-struct xypoint {
-	int32_t x;
-	int32_t y;
-};
-
-struct range {
-	int32_t min;
-	int32_t max;
-};
-
-/* An area of screen space (used for recording screen dimensions) */
-struct rectangle {
-	struct range x;
-	struct range y;
-};
-
 typedef enum {
 	MB_LEFT = 1,
 	MB_RIGHT,
@@ -102,7 +85,7 @@ struct edge_state {
 };
 
 #include "msgchan.h"
-#include "proto.h"
+#include "message.h"
 #include "kvmap.h"
 
 struct node {

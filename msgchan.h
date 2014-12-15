@@ -9,7 +9,7 @@
 #ifndef MSGCHAN_H
 #define MSGCHAN_H
 
-#include "proto.h"
+#include "message.h"
 #include "events.h"
 
 struct msgchan;

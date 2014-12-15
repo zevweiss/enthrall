@@ -19,47 +19,47 @@ static void handle_message(const struct message* msg)
 {
 	struct message* resp;
 
-	switch (msg->type) {
+	switch (msg->body.type) {
 	case MT_SHUTDOWN:
 		shutdown_remote();
 		exit(0);
 
 	case MT_MOVEREL:
-		move_mousepos(msg->moverel.dx, msg->moverel.dy);
+		move_mousepos(MB(msg, moverel).dx, MB(msg, moverel).dy);
 		resp = new_message(MT_MOUSEPOS);
-		resp->mousepos.pt = get_mousepos();
+		MB(resp, mousepos).pt = get_mousepos();
 		mc_enqueue_message(&stdio_msgchan, resp);
 		break;
 
 	case MT_MOVEABS:
-		set_mousepos(msg->moveabs.pt);
+		set_mousepos(MB(msg, moveabs).pt);
 		break;
 
 	case MT_CLICKEVENT:
-		do_clickevent(msg->clickevent.button, msg->clickevent.pressrel);
+		do_clickevent(MB(msg, clickevent).button,
+		              MB(msg, clickevent).pressrel);
 		break;
 
 	case MT_KEYEVENT:
-		do_keyevent(msg->keyevent.keycode, msg->keyevent.pressrel);
+		do_keyevent(MB(msg, keyevent).keycode, MB(msg, keyevent).pressrel);
 		break;
 
 	case MT_GETCLIPBOARD:
 		resp = new_message(MT_SETCLIPBOARD);
-		resp->extra.buf = get_clipboard_text();
-		resp->extra.len = strlen(resp->extra.buf);
+		MB(resp, setclipboard).text = get_clipboard_text();
 		mc_enqueue_message(&stdio_msgchan, resp);
 		break;
 
 	case MT_SETCLIPBOARD:
-		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
+		set_clipboard_text(MB(msg, setclipboard).text);
 		break;
 
 	case MT_SETBRIGHTNESS:
-		set_display_brightness(msg->setbrightness.brightness);
+		set_display_brightness(MB(msg, setbrightness).brightness);
 		break;
 
 	default:
-		errlog("unhandled message type: %u\n", msg->type);
+		errlog("unhandled message type: %u\n", msg->body.type);
 		shutdown_remote();
 		exit(1);
 	}
@@ -71,19 +71,20 @@ static void handle_setup_msg(const struct message* msg)
 	struct message* readymsg;
 	struct kvmap* params;
 
-	if (msg->type != MT_SETUP) {
-		errlog("unexpected message type %u instead of SETUP\n", msg->type);
+	if (msg->body.type != MT_SETUP) {
+		errlog("unexpected message type %u instead of SETUP\n", msg->body.type);
 		exit(1);
 	}
 
-	if (msg->setup.prot_vers != PROT_VERSION) {
-		errlog("unsupported protocol version %d\n", msg->setup.prot_vers);
+	if (MB(msg, setup).prot_vers != PROT_VERSION) {
+		errlog("unsupported protocol version %d\n", MB(msg, setup).prot_vers);
 		exit(1);
 	}
 
-	set_loglevel(msg->setup.loglevel);
+	set_loglevel(MB(msg, setup).loglevel);
 
-	params = unflatten_kvmap(msg->extra.buf, msg->extra.len);
+	params = unflatten_kvmap(MB(msg, setup).params.params_val,
+	                         MB(msg, setup).params.params_len);
 	if (!params) {
 		errlog("failed to unflatted remote-params kvmap\n");
 		exit(1);
@@ -97,7 +98,7 @@ static void handle_setup_msg(const struct message* msg)
 	destroy_kvmap(params);
 
 	readymsg = new_message(MT_READY);
-	get_screen_dimensions(&readymsg->ready.screendim);
+	get_screen_dimensions(&MB(readymsg, ready).screendim);
 	mc_enqueue_message(&stdio_msgchan, readymsg);
 }
 

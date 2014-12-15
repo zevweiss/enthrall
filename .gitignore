@@ -1,3 +1,4 @@
 enthrall
 *.yy.[ch]
 *.tab.[ch]
+proto.[ch]

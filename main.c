@@ -18,7 +18,7 @@
 
 #include "types.h"
 #include "misc.h"
-#include "proto.h"
+#include "message.h"
 #include "platform.h"
 #include "keycodes.h"
 
@@ -155,8 +155,7 @@ __printf(2, 3) void mlog(unsigned int level, const char* fmt, ...)
 		vlog(fmt, va);
 	} else {
 		msg = new_message(MT_LOGMSG);
-		msg->extra.buf = xvasprintf(fmt, va);
-		msg->extra.len = strlen(msg->extra.buf);
+		MB(msg, logmsg).msg = xvasprintf(fmt, va);
 		mc_enqueue_message(&stdio_msgchan, msg);
 	}
 	va_end(va);
@@ -413,10 +412,11 @@ static void setup_remote(struct remote* rmt)
 		perror("close");
 
 	setupmsg = new_message(MT_SETUP);
-	setupmsg->type = MT_SETUP;
-	setupmsg->setup.prot_vers = PROT_VERSION;
-	setupmsg->setup.loglevel = config->log.level;
-	setupmsg->extra.buf = flatten_kvmap(rmt->params, &setupmsg->extra.len);
+	setupmsg->body.type = MT_SETUP;
+	MB(setupmsg, setup).prot_vers = PROT_VERSION;
+	MB(setupmsg, setup).loglevel = config->log.level;
+	MB(setupmsg, setup).params.params_val = flatten_kvmap(rmt->params,
+	                                                      &MB(setupmsg, setup).params.params_len);
 
 	enqueue_message(rmt, setupmsg);
 }
@@ -553,9 +553,7 @@ static void transfer_clipboard(struct node* from, struct node* to)
 		enqueue_message(from->remote, msg);
 	} else if (is_remote(to)) {
 		msg = new_message(MT_SETCLIPBOARD);
-		msg->extra.buf = get_clipboard_text();
-		msg->extra.len = strlen(msg->extra.buf);
-		assert(msg->extra.len <= UINT32_MAX);
+		MB(msg, setclipboard).text = get_clipboard_text();
 		enqueue_message(to->remote, msg);
 	}
 }
@@ -569,8 +567,8 @@ static void transfer_modifiers(struct node* from, struct node* to,
 	if (is_remote(from)) {
 		for (i = 0; modkeys[i] != ET_null; i++) {
 			msg = new_message(MT_KEYEVENT);
-			msg->keyevent.pressrel = PR_RELEASE;
-			msg->keyevent.keycode = modkeys[i];
+			MB(msg, keyevent).pressrel = PR_RELEASE;
+			MB(msg, keyevent).keycode = modkeys[i];
 			enqueue_message(from->remote, msg);
 		}
 	}
@@ -578,8 +576,8 @@ static void transfer_modifiers(struct node* from, struct node* to,
 	if (is_remote(to)) {
 		for (i = 0; modkeys[i] != ET_null; i++) {
 			msg = new_message(MT_KEYEVENT);
-			msg->keyevent.pressrel = PR_PRESS;
-			msg->keyevent.keycode = modkeys[i];
+			MB(msg, keyevent).pressrel = PR_PRESS;
+			MB(msg, keyevent).keycode = modkeys[i];
 			enqueue_message(to->remote, msg);
 		}
 	}
@@ -594,8 +592,8 @@ void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr)
 
 	msg = new_message(MT_KEYEVENT);
 
-	msg->keyevent.keycode = kc;
-	msg->keyevent.pressrel = pr;
+	MB(msg, keyevent).keycode = kc;
+	MB(msg, keyevent).pressrel = pr;
 
 	enqueue_message(rmt, msg);
 }
@@ -609,8 +607,8 @@ void send_moverel(struct remote* rmt, int32_t dx, int32_t dy)
 
 	msg = new_message(MT_MOVEREL);
 
-	msg->moverel.dx = dx;
-	msg->moverel.dy = dy;
+	MB(msg, moverel).dx = dx;
+	MB(msg, moverel).dy = dy;
 
 	enqueue_message(rmt, msg);
 }
@@ -624,8 +622,8 @@ void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr)
 
 	msg = new_message(MT_CLICKEVENT);
 
-	msg->clickevent.button = button;
-	msg->clickevent.pressrel = pr;
+	MB(msg, clickevent).button = button;
+	MB(msg, clickevent).pressrel = pr;
 
 	enqueue_message(rmt, msg);
 }
@@ -639,7 +637,7 @@ void send_setbrightness(struct remote* rmt, float f)
 
 	msg = new_message(MT_SETBRIGHTNESS);
 
-	msg->setbrightness.brightness = f;
+	MB(msg, setbrightness).brightness = f;
 
 	enqueue_message(rmt, msg);
 }
@@ -1006,7 +1004,7 @@ static void edgeswitch_reposition(direction_t dir, float src_x, float src_y)
 
 	if (focused_node->remote) {
 		msg = new_message(MT_MOVEABS);
-		msg->moveabs.pt = pt;
+		MB(msg, moveabs).pt = pt;
 		enqueue_message(focused_node->remote, msg);
 	} else {
 		set_mousepos(pt);
@@ -1103,7 +1101,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 	char* logmsg;
 	struct message* resp;
 
-	switch (msg->type) {
+	switch (msg->body.type) {
 	case MT_READY:
 		if (rmt->state != CS_SETTINGUP) {
 			fail_remote(rmt, "unexpected READY message");
@@ -1113,8 +1111,8 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->failcount = 0;
 		info("remote %s becomes ready.\n", rmt->node.name);
 		vinfo("%s screen dimensions: %ux%u\n", rmt->node.name,
-		      msg->ready.screendim.x.max, msg->ready.screendim.y.max);
-		rmt->node.dimensions = msg->ready.screendim;
+		      MB(msg, ready).screendim.x.max, MB(msg, ready).screendim.y.max);
+		rmt->node.dimensions = MB(msg, ready).screendim;
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
 			                      config->focus_hint.duration,
@@ -1122,28 +1120,27 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		break;
 
 	case MT_SETCLIPBOARD:
-		set_clipboard_from_buf(msg->extra.buf, msg->extra.len);
+		set_clipboard_text(MB(msg, setclipboard).text);
 		if (focused_node->remote) {
 			resp = new_message(MT_SETCLIPBOARD);
-			resp->extra.buf = get_clipboard_text();
-			resp->extra.len = strlen(resp->extra.buf);
+			MB(resp, setclipboard).text = get_clipboard_text();
 			enqueue_message(focused_node->remote, resp);
 		}
 		break;
 
 	case MT_LOGMSG:
-		loglen = msg->extra.len > INT_MAX ? INT_MAX : msg->extra.len;
-		logmsg = msg->extra.buf;
+		logmsg = MB(msg, logmsg).msg;
+		loglen = strlen(logmsg);
 		/*
 		 * Log-level filtering is done on remotes, so anything the
 		 * master receives goes directly to the log.
 		 */
-		log_direct("%s: %.*s%s", rmt->node.name, loglen, logmsg,
-		           logmsg[msg->extra.len-1] == '\n' ? "" : "\n");
+		log_direct("%s: %s%s", rmt->node.name, logmsg,
+		           logmsg[loglen-1] == '\n' ? "" : "\n");
 		break;
 
 	case MT_MOUSEPOS:
-		check_edgeevents(&rmt->node, msg->mousepos.pt);
+		check_edgeevents(&rmt->node, MB(msg, mousepos).pt);
 		break;
 
 	default:

@@ -2,6 +2,7 @@
 CC = cc
 FLEX = flex
 BISON = bison
+RPCGEN = rpcgen
 
 CFLAGS = -Wall -Werror
 LIBS = -lm
@@ -52,14 +53,17 @@ else
 endif
 
 CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h
+PROTSRCS = proto.c proto.h
 
-HEADERS = misc.h types.h proto.h msgchan.h events.h platform.h kvmap.h \
+GEN = $(CFGSRCS) $(PROTSRCS)
+
+HEADERS = misc.h types.h message.h msgchan.h events.h platform.h kvmap.h \
 	keycodes.h $(PLATFORM)-keycodes.h
 
-SRCS = main.c remote.c proto.c msgchan.c kvmap.c misc.c \
+SRCS = main.c remote.c message.c msgchan.c kvmap.c misc.c \
 	$(PLATFORM).c $(PLATFORM)-keycodes.c
 
-enthrall: $(SRCS) $(HEADERS) $(CFGSRCS)
+enthrall: $(SRCS) $(HEADERS) $(CFGSRCS) $(PROTSRCS)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^) $(LIBS)
 
 %.yy.h: %.yy.c
@@ -74,6 +78,12 @@ enthrall: $(SRCS) $(HEADERS) $(CFGSRCS)
 %.tab.c: %.y
 	$(BISON) -Wall --defines=$*.tab.h -o $@ $<
 
+%.h: %.x
+	$(RPCGEN) -h $< > $@
+
+%.c: %.x
+	$(RPCGEN) -c $< > $@
+
 .PHONY: clean
 clean:
-	rm -f enthrall *.yy.[ch] *.tab.[ch]
+	rm -f enthrall $(GEN)
