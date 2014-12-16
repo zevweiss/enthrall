@@ -5,8 +5,10 @@
  * message.c.
  */
 
-/* HACK: glibc's rpcgen generates code with unused variables. */
+/* HACK: glibc's rpcgen generates XDR code with unused variables. */
+#ifdef RPC_XDR
 %#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
 
 #ifdef __APPLE__
 typedef u_int32_t uint32_t;
