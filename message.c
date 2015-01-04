@@ -234,6 +234,8 @@ struct message* new_message(msgtype_t type)
  */
 void free_msgbody(struct message* msg)
 {
+	int i;
+
 	if (msg->from_xdr) {
 		xdr_free((xdrproc_t)xdr_msgbody, (caddr_t)&msg->body);
 	} else {
@@ -243,6 +245,10 @@ void free_msgbody(struct message* msg)
 			break;
 
 		case MT_SETUP:
+			for (i = 0; i < MB(msg, setup).params.params_len; i++) {
+				xfree(MB(msg, setup).params.params_val[i].key);
+				xfree(MB(msg, setup).params.params_val[i].value);
+			}
 			xfree(MB(msg, setup).params.params_val);
 			break;
 
