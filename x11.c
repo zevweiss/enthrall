@@ -688,6 +688,8 @@ static struct xypoint get_mousepos_and_mask(unsigned int* mask)
 	pt.x = tmp_x;
 	pt.y = tmp_y;
 
+	*mask &= relevant_modmask;
+
 	return pt;
 }
 
