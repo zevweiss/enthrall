@@ -35,7 +35,7 @@ static struct config global_cfg = {
 static struct config* config = &global_cfg;
 
 struct node* focused_node;
-struct node* last_focused_node;
+static struct node* last_focused_node;
 opmode_t opmode;
 
 static char* progname;
