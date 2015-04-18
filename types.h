@@ -7,13 +7,14 @@
 #include "events.h"
 
 typedef enum {
-	MB_LEFT = 1,
+	MB_LEFT,
 	MB_RIGHT,
 	MB_CENTER,
 	MB_SCROLLUP,
 	MB_SCROLLDOWN,
-	/* Remember to update this if/when needed... */
-	NUM_MOUSEBUTTONS = MB_SCROLLDOWN,
+
+	MB__dummy_,
+	MB__MAX_ = MB__dummy_ - 1,
 } mousebutton_t;
 
 /* Platform-independent internal representation of a keyboard key */

@@ -567,7 +567,7 @@ struct click_history {
 	int count;
 };
 
-static struct click_history click_histories[NUM_MOUSEBUTTONS];
+static struct click_history click_histories[MB__MAX_+1];
 
 /*
  * 1: single-click, 2: double-click, 3: triple-click.
