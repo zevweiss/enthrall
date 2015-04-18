@@ -9,10 +9,14 @@
 /* msgchan attached to stdin & stdout  */
 struct msgchan stdio_msgchan;
 
+static int initialized = 0;
+
 static void shutdown_remote(void)
 {
 	mc_close(&stdio_msgchan);
-	platform_exit();
+
+	if (initialized)
+		platform_exit();
 }
 
 static void handle_message(const struct message* msg)
@@ -105,8 +109,6 @@ static void handle_setup_msg(const struct message* msg)
 /* msgchan callback to handle received messages */
 static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 {
-	static int initialized = 0;
-
 	if (!initialized) {
 		handle_setup_msg(msg);
 		initialized = 1;
