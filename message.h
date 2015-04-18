@@ -53,7 +53,7 @@ void free_message(struct message* msg);
 void free_msgbody(struct message* msg);
 
 int fill_msgbuf(int fd, struct partrecv* pr);
-void parse_message(struct partrecv* pr, struct message* msg);
+int parse_message(struct partrecv* pr, struct message* msg);
 
 void unparse_message(const struct message* msg, struct partsend* ps);
 int drain_msgbuf(int fd, struct partsend* ps);

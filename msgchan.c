@@ -102,7 +102,10 @@ static int recv_message(struct msgchan* mc, struct message* msg)
 	if (status <= 0)
 		return status;
 
-	parse_message(&mc->recv_msgbuf, msg);
+	status = parse_message(&mc->recv_msgbuf, msg);
+	if (status < 0)
+		return status;
+
 	return 1;
 }
 

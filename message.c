@@ -197,16 +197,16 @@ int fill_msgbuf(int fd, struct partrecv* pr)
 
 /*
  * "Unflatten" the wire-protocol byte array in the given partrecv buffer into
- * a message struct.
+ * a message struct, returning zero on success and negative on error.
  */
-void parse_message(struct partrecv* pr, struct message* msg)
+int parse_message(struct partrecv* pr, struct message* msg)
 {
 	XDR xdrs;
 
 	xdrmem_create(&xdrs, pr->plbuf, pr->bytes_recvd - MSGHDR_SIZE, XDR_DECODE);
 	if (!xdr_msgbody(&xdrs, &msg->body)) {
-		fprintf(stderr, "xdr_msgbody() failed in parse_message()\n");
-		abort();
+		fprintf(stderr, "xdr_msgbody() failed in parse_message() (invalid input?)\n");
+		return -1;
 	}
 	msg->from_xdr = 1;
 	xdr_destroy(&xdrs);
@@ -214,6 +214,8 @@ void parse_message(struct partrecv* pr, struct message* msg)
 	xfree(pr->plbuf);
 	pr->plbuf = NULL;
 	pr->bytes_recvd = 0;
+
+	return 0;
 }
 
 /* Allocate and return a new message of the given type. */
