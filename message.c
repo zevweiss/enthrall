@@ -171,7 +171,7 @@ int fill_msgbuf(int fd, struct partrecv* pr)
 	hdrbuf = pr->hdrbuf;
 	msgsize = ntohl(*(uint32_t*)hdrbuf);
 
-	to_read = msgsize;
+	to_read = msgsize - (pr->bytes_recvd - MSGHDR_SIZE);
 
 	if (!pr->plbuf) {
 		assert(pr->bytes_recvd == MSGHDR_SIZE);
