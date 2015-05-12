@@ -1178,7 +1178,7 @@ static char** get_agent_keylist(void)
 	 * Dynamically constructing a format string to work around lack of
 	 * "%ms" support on pre-POSIX.1-2008 systems...irony?
 	 */
-	char* fmtstr = xasprintf("%%*d %%*s %%%ds %%*s\n", sizeof(keypath));
+	char* fmtstr = xasprintf("%%*d %%*s %%%ds %%*s\n", sizeof(keypath)-1);
 
 	while (!feof(listpipe)) {
 		if (!fgets(linebuf, sizeof(linebuf), listpipe)
