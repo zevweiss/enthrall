@@ -760,6 +760,8 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 
 	from = focused_node;
 
+	debug("focus switch: %s -> %s\n", from->name, to->name);
+
 	/*
 	 * If configured to do so, give visual indication even if no actual
 	 * switch is performed.
