@@ -802,13 +802,22 @@ int set_clipboard_text(const char* text)
 	return ret;
 }
 
+static struct xypoint saved_mousepos;
+
 int grab_inputs(void)
 {
-	return CGDisplayHideCursor(kCGDirectMainDisplay) == kCGErrorSuccess ? 0 : -1;
+	saved_mousepos = get_mousepos();
+
+	if (CGDisplayHideCursor(kCGDirectMainDisplay) != kCGErrorSuccess)
+		return 1;
+
+	set_mousepos_silent(screen_center);
+	return 0;
 }
 
 void ungrab_inputs(void)
 {
+	set_mousepos_silent(saved_mousepos);
 	CGDisplayShowCursor(kCGDirectMainDisplay);
 }
 

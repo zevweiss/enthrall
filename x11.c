@@ -781,12 +781,18 @@ static inline const char* grab_failure_message(int status)
 	}
 }
 
+static struct xypoint saved_mousepos;
+
 #define PointerEventsMask (PointerMotionMask|ButtonPressMask|ButtonReleaseMask)
 
 int grab_inputs(void)
 {
-	int status = XGrabKeyboard(xdisp, xrootwin, False, GrabModeAsync,
-	                           GrabModeAsync, CurrentTime);
+	int status;
+
+	saved_mousepos = get_mousepos();
+
+	status = XGrabKeyboard(xdisp, xrootwin, False, GrabModeAsync,
+	                       GrabModeAsync, CurrentTime);
 	if (status) {
 		errlog("Failed to grab keyboard: %s\n", grab_failure_message(status));
 		return status;
@@ -801,6 +807,8 @@ int grab_inputs(void)
 		return status;
 	}
 
+	set_mousepos(screen_center);
+
 	XSync(xdisp, False);
 
 	return status;
@@ -810,6 +818,7 @@ void ungrab_inputs(void)
 {
 	XUngrabKeyboard(xdisp, CurrentTime);
 	XUngrabPointer(xdisp, CurrentTime);
+	set_mousepos(saved_mousepos);
 	XSync(xdisp, False);
 }
 

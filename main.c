@@ -724,8 +724,6 @@ static void indicate_switch(struct node* from, struct node* to)
 	}
 }
 
-static struct xypoint saved_master_mousepos;
-
 /*
  * A special focus-switch for when the focused remote fails; in this case we
  * just revert focus directly to the master.
@@ -733,7 +731,6 @@ static struct xypoint saved_master_mousepos;
 static void focus_master(void)
 {
 	ungrab_inputs();
-	set_mousepos(saved_master_mousepos);
 	last_focused_node = focused_node;
 	focused_node = &config->master;
 	indicate_switch(NULL, &config->master);
@@ -774,16 +771,10 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	if (to == from)
 		return 0;
 
-	if (is_remote(from) && is_master(to)) {
+	if (is_remote(from) && is_master(to))
 		ungrab_inputs();
-		set_mousepos(saved_master_mousepos);
-	} else if (is_master(from) && is_remote(to)) {
-		saved_master_mousepos = get_mousepos();
+	else if (is_master(from) && is_remote(to))
 		grab_inputs();
-	}
-
-	if (is_remote(to))
-		set_mousepos(screen_center);
 
 	transfer_clipboard(from, to);
 	transfer_modifiers(from, to, modkeys);
