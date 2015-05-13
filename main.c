@@ -659,7 +659,13 @@ static void set_brightness_cb(void* arg)
 {
 	struct setbrightness_cb_args* args = arg;
 
-	set_node_display_brightness(args->node, args->brightness);
+	/*
+	 * There's a chance this can be called after a remote has been
+	 * disconnected, in which case we need to not try to send the
+	 * brightness-change message to avoid a use-after-free.
+	 */
+	if (!(is_remote(args->node) && args->node->remote->state != CS_CONNECTED))
+		set_node_display_brightness(args->node, args->brightness);
 
 	xfree(args);
 }
