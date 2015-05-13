@@ -925,6 +925,11 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	send_keyevent(focused_node->remote, kc, pr);
 }
 
+static inline void update_last_mousepos(XMotionEvent* mev)
+{
+	last_seen_mousepos = (struct xypoint){ .x = mev->x_root, .y = mev->y_root, };
+}
+
 static void handle_grabbed_mousemove(XMotionEvent* mev)
 {
 	if (mev->x_root == screen_center.x
@@ -939,7 +944,7 @@ static void handle_grabbed_mousemove(XMotionEvent* mev)
 		set_mousepos(screen_center);
 		last_seen_mousepos = screen_center;
 	} else {
-		last_seen_mousepos = (struct xypoint){ .x = mev->x_root, .y = mev->y_root, };
+		update_last_mousepos(mev);
 	}
 }
 
@@ -948,6 +953,8 @@ static void handle_local_mousemove(XMotionEvent* mev)
 	/* Only trigger edge events when no mouse buttons are held */
 	if (mousepos_handler && !(mev->state & MouseButtonMask))
 		mousepos_handler((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
+
+	update_last_mousepos(mev);
 }
 
 static void handle_rawmotion(XIRawEvent* rev)
