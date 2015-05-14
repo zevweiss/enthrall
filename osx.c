@@ -811,12 +811,17 @@ int grab_inputs(void)
 	if (CGDisplayHideCursor(kCGDirectMainDisplay) != kCGErrorSuccess)
 		return 1;
 
-	set_mousepos_silent(screen_center);
+	if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess) {
+		CGDisplayShowCursor(kCGDirectMainDisplay);
+		return 1;
+	}
+
 	return 0;
 }
 
 void ungrab_inputs(void)
 {
+	CGAssociateMouseAndMouseCursorPosition(true);
 	set_mousepos_silent(saved_mousepos);
 	CGDisplayShowCursor(kCGDirectMainDisplay);
 }
@@ -1108,8 +1113,6 @@ static void handle_grabbed_mousemove(CGEventRef ev)
 	assert(is_remote(focused_node));
 
 	send_moverel(focused_node->remote, dx, dy);
-
-	set_mousepos_silent(screen_center);
 }
 
 static void handle_local_mousemove(CGEventRef ev)
