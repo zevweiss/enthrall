@@ -814,11 +814,12 @@ int grab_inputs(void)
 	return status;
 }
 
-void ungrab_inputs(void)
+void ungrab_inputs(int restore_mousepos)
 {
 	XUngrabKeyboard(xdisp, CurrentTime);
 	XUngrabPointer(xdisp, CurrentTime);
-	set_mousepos(saved_mousepos);
+	if (restore_mousepos)
+		set_mousepos(saved_mousepos);
 	XSync(xdisp, False);
 }
 

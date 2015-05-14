@@ -819,10 +819,11 @@ int grab_inputs(void)
 	return 0;
 }
 
-void ungrab_inputs(void)
+void ungrab_inputs(int restore_mousepos)
 {
 	CGAssociateMouseAndMouseCursorPosition(true);
-	set_mousepos_silent(saved_mousepos);
+	if (restore_mousepos)
+		set_mousepos_silent(saved_mousepos);
 	CGDisplayShowCursor(kCGDirectMainDisplay);
 }
 

@@ -23,7 +23,7 @@ keycode_t* get_hotkey_modifiers(hotkey_context_t ctx);
 keycode_t* get_current_modifiers(void);
 
 int grab_inputs(void);
-void ungrab_inputs(void);
+void ungrab_inputs(int restore_mousepos);
 
 char* get_clipboard_text(void);
 int set_clipboard_text(const char* text);

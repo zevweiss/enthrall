@@ -734,7 +734,7 @@ static void indicate_switch(struct node* from, struct node* to)
  */
 static void focus_master(void)
 {
-	ungrab_inputs();
+	ungrab_inputs(1);
 	last_focused_node = focused_node;
 	focused_node = &config->master;
 	indicate_switch(NULL, &config->master);
@@ -776,7 +776,7 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	debug2("focus switch: %s -> %s\n", from->name, to->name);
 
 	if (is_remote(from) && is_master(to))
-		ungrab_inputs();
+		ungrab_inputs(via_hotkey);
 	else if (is_master(from) && is_remote(to))
 		grab_inputs();
 
