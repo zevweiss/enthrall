@@ -270,3 +270,27 @@ void free_message(struct message* msg)
 	free_msgbody(msg);
 	xfree(msg);
 }
+
+/* Would be nice if there were some easy way to generate this from proto.x... */
+static const char* const msgtype_names[] = {
+#define MTN(n) [MT_##n] = #n
+	MTN(SETUP),
+	MTN(READY),
+	MTN(SHUTDOWN),
+	MTN(MOVEREL),
+	MTN(MOVEABS),
+	MTN(MOUSEPOS),
+	MTN(CLICKEVENT),
+	MTN(KEYEVENT),
+	MTN(GETCLIPBOARD),
+	MTN(SETCLIPBOARD),
+	MTN(LOGMSG),
+	MTN(SETBRIGHTNESS),
+#undef MTN
+};
+
+const char* msgtype_name(msgtype_t type)
+{
+	const char* name = type >= ARR_LEN(msgtype_names) ? "???" : msgtype_names[type];
+	return name ? name : "???";
+}

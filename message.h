@@ -52,6 +52,8 @@ struct message* new_message(msgtype_t type);
 void free_message(struct message* msg);
 void free_msgbody(struct message* msg);
 
+const char* msgtype_name(msgtype_t type);
+
 int fill_msgbuf(int fd, struct partrecv* pr);
 int parse_message(struct partrecv* pr, struct message* msg);
 

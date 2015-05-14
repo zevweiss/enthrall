@@ -340,6 +340,10 @@ static void rmt_mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 {
 	struct remote* rmt = arg;
 
+	if (msg->body.type != MT_MOUSEPOS && msg->body.type != MT_LOGMSG)
+		debug2("received %s from %s\n", msgtype_name(msg->body.type),
+		       rmt->node.name);
+
 	handle_message(rmt, msg);
 }
 
@@ -757,8 +761,6 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 
 	from = focused_node;
 
-	debug("focus switch: %s -> %s\n", from->name, to->name);
-
 	/*
 	 * If configured to do so, give visual indication even if no actual
 	 * switch is performed.
@@ -770,6 +772,8 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 
 	if (to == from)
 		return 0;
+
+	debug2("focus switch: %s -> %s\n", from->name, to->name);
 
 	if (is_remote(from) && is_master(to))
 		ungrab_inputs();

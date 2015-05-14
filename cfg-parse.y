@@ -92,7 +92,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
 %token KW_LOGFILE KW_LOGLEVEL KW_SYSLOG KW_STDERR
-%token KW_ERROR KW_WARN KW_INFO KW_VERBOSE KW_DEBUG
+%token KW_ERROR KW_WARN KW_INFO KW_VERBOSE KW_DEBUG KW_DEBUG2
 
 
 %token END 0 "EOF"
@@ -246,7 +246,8 @@ loglevel: KW_ERROR { $$ = LL_ERROR; }
 | KW_WARN { $$ = LL_WARN; }
 | KW_INFO { $$ = LL_INFO; }
 | KW_VERBOSE { $$ = LL_VERBOSE; }
-| KW_DEBUG { $$ = LL_DEBUG; };
+| KW_DEBUG { $$ = LL_DEBUG; }
+| KW_DEBUG2 { $$ = LL_DEBUG2; };
 
 logfile: KW_SYSLOG { $$.type = LF_SYSLOG; }
 | KW_STDERR { $$.type = LF_STDERR; }

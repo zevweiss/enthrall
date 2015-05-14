@@ -109,6 +109,9 @@ static void handle_setup_msg(const struct message* msg)
 /* msgchan callback to handle received messages */
 static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 {
+	if (msg->body.type != MT_MOVEREL)
+		debug2("received %s\n", msgtype_name(msg->body.type));
+
 	if (!initialized) {
 		handle_setup_msg(msg);
 		initialized = 1;

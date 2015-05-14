@@ -54,6 +54,7 @@ decimal		[-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "info"		return KW_INFO;
 "verbose"	return KW_VERBOSE;
 "debug"		return KW_DEBUG;
+"debug2"	return KW_DEBUG2;
 
 "show-focus"	return KW_SHOWFOCUS;
 "dim-inactive"	return KW_DIMINACTIVE;

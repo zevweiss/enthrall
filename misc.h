@@ -105,6 +105,7 @@ enum {
 	LL_INFO,
 	LL_VERBOSE,
 	LL_DEBUG,
+	LL_DEBUG2,
 };
 
 __printf(1, 2) void initerr(const char* fmt, ...);
@@ -116,6 +117,7 @@ __printf(2, 3) void mlog(unsigned int level, const char* fmt, ...);
 #define info(fmt, ...) mlog(LL_INFO, fmt, ##__VA_ARGS__)
 #define vinfo(fmt, ...) mlog(LL_VERBOSE, fmt, ##__VA_ARGS__)
 #define debug(fmt, ...) mlog(LL_DEBUG, fmt, ##__VA_ARGS__)
+#define debug2(fmt, ...) mlog(LL_DEBUG2, fmt, ##__VA_ARGS__)
 
 typedef enum {
 	MASTER,
