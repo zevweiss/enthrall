@@ -27,6 +27,7 @@ static Cursor xcursor_blank;
 
 static Atom et_selection_data;
 static Atom utf8_string_atom;
+static Atom targets_atom;
 
 static Time last_xevent_time;
 
@@ -591,6 +592,7 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 
 	et_selection_data = XInternAtom(xdisp, "ET_SELECTION_DATA", False);
 	utf8_string_atom = XInternAtom(xdisp, "UTF8_STRING", False);
+	targets_atom = XInternAtom(xdisp, "TARGETS", False);
 
 	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
 		if (clipboard_xatoms[i].atom == None) {
@@ -883,28 +885,34 @@ static int is_known_clipboard_xatom(Atom atom)
 static void handle_selection_request(const XSelectionRequestEvent* req)
 {
 	Atom property;
+	Atom supported_targets[] = { targets_atom, XA_STRING,  };
+
+	/*
+	 * ICCCM sec. 2.2:
+	 *
+	 * "If the specified property is None , the requestor is an obsolete
+	 *  client. Owners are encouraged to support these clients by using
+	 *  the specified target atom as the property name to be used for the
+	 *  reply."
+	 */
+	property = (req->property == None) ? req->target : req->property;
 
 	if (!clipboard_text
 	    || (req->time != CurrentTime && req->time < xselection_owned_since)
 	    || req->owner != xwin || !is_known_clipboard_xatom(req->selection)) {
 		property = None;
-	} else if (req->target != XA_STRING) {
-		property = None;
-	} else {
-		/*
-		 * ICCCM sec. 2.2:
-		 *
-		 * "If the specified property is None , the requestor is an obsolete
-		 *  client. Owners are encouraged to support these clients by using
-		 *  the specified target atom as the property name to be used for the
-		 *  reply."
-		 */
-		property = (req->property == None) ? req->target : req->property;
-
+	} else if (req->target == targets_atom) {
+		/* Tell the requesting client what selection formats we support */
+		XChangeProperty(xdisp, req->requestor, property, XA_ATOM, 32,
+		                PropModeReplace, (unsigned char*)supported_targets,
+		                ARR_LEN(supported_targets));
+	} else if (req->target == XA_STRING) {
 		/* Send the requested data back to the requesting window */
 		XChangeProperty(xdisp, req->requestor, property, req->target, 8,
 		                PropModeReplace, (unsigned char*)clipboard_text,
 		                strlen(clipboard_text));
+	} else {
+		property = None;
 	}
 
 	/* Acknowledge that the transfer has been made (or failed) */
