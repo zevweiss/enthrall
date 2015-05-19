@@ -24,10 +24,6 @@ static void handle_message(const struct message* msg)
 	struct message* resp;
 
 	switch (msg->body.type) {
-	case MT_SHUTDOWN:
-		shutdown_remote();
-		exit(0);
-
 	case MT_MOVEREL:
 		move_mousepos(MB(msg, moverel).dx, MB(msg, moverel).dy);
 		resp = new_message(MT_MOUSEPOS);

@@ -23,7 +23,6 @@ typedef u_int32_t uint32_t;
 enum msgtype_t {
 	MT_SETUP = 1,
 	MT_READY,
-	MT_SHUTDOWN,
 	MT_MOVEREL,
 	MT_MOVEABS,
 	MT_MOUSEPOS,
@@ -82,12 +81,6 @@ struct setup_body {
 struct ready_body {
 	rectangle screendim;
 };
-
-/*
- * SHUTDOWN messages have no body content (and are actually pointless since a
- * simple EOF on the message channel will terminate a remote; this message may
- * thus be removed).
- */
 
 /*
  * MOVEREL: sent by the master to a remote to instruct it move the mouse
@@ -187,8 +180,6 @@ case MT_SETUP:
 	setup_body setup;
 case MT_READY:
 	ready_body ready;
-case MT_SHUTDOWN:
-	void;
 case MT_MOVEREL:
 	moverel_body moverel;
 case MT_MOVEABS:

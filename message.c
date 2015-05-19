@@ -276,7 +276,6 @@ static const char* const msgtype_names[] = {
 #define MTN(n) [MT_##n] = #n
 	MTN(SETUP),
 	MTN(READY),
-	MTN(SHUTDOWN),
 	MTN(MOVEREL),
 	MTN(MOVEABS),
 	MTN(MOUSEPOS),
