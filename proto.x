@@ -3,6 +3,12 @@
  *
  * Note that this is not the *entirety* of the wire protocol; see comment in
  * message.c.
+ *
+ * Note also that while some messages are described as expecting a reply, the
+ * only place where the reply is a strict requirement is in the initial
+ * SETUP/READY handshake sequence; beyond that the protocol is completely
+ * stateless (though if everything's operating correctly the expected replies
+ * *should* be given).
  */
 
 /* HACK: glibc's rpcgen generates XDR code with unused variables. */
@@ -46,56 +52,132 @@ struct rectangle {
 	range y;
 };
 
+/* A simple key-value pair. */
 struct kvpair {
 	string key<>;
 	string value<>;
 };
 
+/*
+ * SETUP: the first message sent by the master to each remote upon
+ * establishing a connection.  Contains various initialization parameters,
+ * including log level and an unstructured kvmap of miscellaneous other things
+ * (like the DISPLAY environment variable for X11 remotes).
+ *
+ * Should trigger a READY in reply.
+ */
 struct setup_body {
 	uint32_t prot_vers;
 	uint32_t loglevel;
 	kvpair params<>;
 };
 
+/*
+ * READY: the first message sent by a newly-alive remote in response to
+ * receiving a SETUP from the master.  Informs the master of the remote's
+ * display dimensions.
+ *
+ * No reply expected.
+ */
 struct ready_body {
 	rectangle screendim;
 };
 
-/* SHUTDOWN messages have no body content */
+/*
+ * SHUTDOWN messages have no body content (and are actually pointless since a
+ * simple EOF on the message channel will terminate a remote; this message may
+ * thus be removed).
+ */
 
+/*
+ * MOVEREL: sent by the master to a remote to instruct it move the mouse
+ * pointer relative to its current position.
+ *
+ * Should trigger a MOUSEPOS in reply.
+ */
 struct moverel_body {
 	int32_t dx;
 	int32_t dy;
 };
 
+/*
+ * MOVEABS: sent by the master to a remote to instruct it to move the mouse
+ * pointer to an absolute position.
+ *
+ * No reply expected.
+ */
 struct moveabs_body {
 	xypoint pt;
 };
 
+/*
+ * MOUSEPOS: sent by remotes to the master in response to a MOVEREL to inform
+ * the master of the mouse pointer's new position (post-MOVEREL).
+ *
+ * No reply expected.
+ */
 struct mousepos_body {
 	xypoint pt;
 };
 
+/*
+ * CLICKEVENT: sent by the master to a remote to generate a mouse-click event.
+ *
+ * No reply expected.
+ */
 struct clickevent_body {
 	uint32_t button;
 	uint32_t pressrel;
 };
 
+/*
+ * KEYEVENT: sent by the master to a remote to generate a keypress event.
+ *
+ * No reply expected.
+ */
 struct keyevent_body {
 	uint32_t keycode;
 	uint32_t pressrel;
 };
 
-/* GETCLIPBOARD messages have no body content */
+/*
+ * GETCLIPBOARD: sent by the master to a remote to retrieve the contents of
+ * the remote's clipboard.
+ *
+ * Should trigger a SETCLIPBOARD in reply.
+ *
+ * GETCLIPBOARD messages have no body content.
+ */
 
+/*
+ * SETCLIPBOARD: sent from the master to a remote when switching focus to that
+ * remote, or from a remote to the master in response to a GETCLIPBOARD.
+ * Instructs the recipient to set its clipboard to the supplied content.
+ *
+ * No reply expected.
+ */
 struct setclipboard_body {
 	string text<>;
 };
 
+/*
+ * LOGMSG: sent by remotes to the master to write a message to the log.
+ * Log-level filtering is done on the remotes (so that this already-chatty
+ * protocol doesn't become wastefully more so), so LOGMSG messages are
+ * unconditionally written to the log.
+ *
+ * No reply expected.
+ */
 struct logmsg_body {
 	string msg<>;
 };
 
+/*
+ * SETBRIGHTNESS: sent by the master to a remote to instruct it to set its
+ * screen brightness to the given level.
+ *
+ * No reply expected.
+ */
 struct setbrightness_body {
 	float brightness;
 };
