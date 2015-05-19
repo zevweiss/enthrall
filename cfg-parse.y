@@ -133,7 +133,7 @@ input: blocks;
  * (just the one empty-rule warning for this, which serves as kind of a
  * pseudo-%empty marker in other rules).
  */
-EMPTY: /* empty */;
+EMPTY: /* empty -- this would be %empty if older bisons supported it. */;
 
 blocks: EMPTY
 | blocks block {
