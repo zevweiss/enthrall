@@ -243,6 +243,79 @@ static void enqueue_message(struct remote* rmt, struct message* msg)
 		fail_remote(rmt, "send backlog exceeded");
 }
 
+void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_KEYEVENT);
+
+	MB(msg, keyevent).keycode = kc;
+	MB(msg, keyevent).pressrel = pr;
+
+	enqueue_message(rmt, msg);
+}
+
+void send_moverel(struct remote* rmt, int32_t dx, int32_t dy)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_MOVEREL);
+
+	MB(msg, moverel).dx = dx;
+	MB(msg, moverel).dy = dy;
+
+	enqueue_message(rmt, msg);
+}
+
+void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_CLICKEVENT);
+
+	MB(msg, clickevent).button = button;
+	MB(msg, clickevent).pressrel = pr;
+
+	enqueue_message(rmt, msg);
+}
+
+void send_setbrightness(struct remote* rmt, float f)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_SETBRIGHTNESS);
+
+	MB(msg, setbrightness).brightness = f;
+
+	enqueue_message(rmt, msg);
+}
+
+void send_setclipboard(struct remote* rmt, char* text)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_SETCLIPBOARD);
+
+	MB(msg, setclipboard).text = text;
+
+	enqueue_message(rmt, msg);
+}
+
 #define SSH_DEFAULT(type, name) \
 	static inline type get_##name(const struct remote* rmt) \
 	{ \
@@ -545,105 +618,31 @@ static void check_remotes(void)
 
 static void transfer_clipboard(struct node* from, struct node* to)
 {
-	struct message* msg;
-
 	if (is_master(from) && is_master(to)) {
 		vinfo("switching from master to master??\n");
 		return;
 	}
 
-	if (is_remote(from)) {
-		msg = new_message(MT_GETCLIPBOARD);
-		enqueue_message(from->remote, msg);
-	} else if (is_remote(to)) {
-		msg = new_message(MT_SETCLIPBOARD);
-		MB(msg, setclipboard).text = get_clipboard_text();
-		enqueue_message(to->remote, msg);
-	}
+	if (is_remote(from))
+		enqueue_message(from->remote, new_message(MT_GETCLIPBOARD));
+	else if (is_remote(to))
+		send_setclipboard(to->remote, get_clipboard_text());
 }
 
 static void transfer_modifiers(struct node* from, struct node* to,
                                const keycode_t* modkeys)
 {
 	int i;
-	struct message* msg;
 
 	if (is_remote(from)) {
-		for (i = 0; modkeys[i] != ET_null; i++) {
-			msg = new_message(MT_KEYEVENT);
-			MB(msg, keyevent).pressrel = PR_RELEASE;
-			MB(msg, keyevent).keycode = modkeys[i];
-			enqueue_message(from->remote, msg);
-		}
+		for (i = 0; modkeys[i] != ET_null; i++)
+			send_keyevent(from->remote, modkeys[i], PR_RELEASE);
 	}
 
 	if (is_remote(to)) {
-		for (i = 0; modkeys[i] != ET_null; i++) {
-			msg = new_message(MT_KEYEVENT);
-			MB(msg, keyevent).pressrel = PR_PRESS;
-			MB(msg, keyevent).keycode = modkeys[i];
-			enqueue_message(to->remote, msg);
-		}
+		for (i = 0; modkeys[i] != ET_null; i++)
+			send_keyevent(to->remote, modkeys[i], PR_PRESS);
 	}
-}
-
-void send_keyevent(struct remote* rmt, keycode_t kc, pressrel_t pr)
-{
-	struct message* msg;
-
-	if (!rmt)
-		return;
-
-	msg = new_message(MT_KEYEVENT);
-
-	MB(msg, keyevent).keycode = kc;
-	MB(msg, keyevent).pressrel = pr;
-
-	enqueue_message(rmt, msg);
-}
-
-void send_moverel(struct remote* rmt, int32_t dx, int32_t dy)
-{
-	struct message* msg;
-
-	if (!rmt)
-		return;
-
-	msg = new_message(MT_MOVEREL);
-
-	MB(msg, moverel).dx = dx;
-	MB(msg, moverel).dy = dy;
-
-	enqueue_message(rmt, msg);
-}
-
-void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr)
-{
-	struct message* msg;
-
-	if (!rmt)
-		return;
-
-	msg = new_message(MT_CLICKEVENT);
-
-	MB(msg, clickevent).button = button;
-	MB(msg, clickevent).pressrel = pr;
-
-	enqueue_message(rmt, msg);
-}
-
-void send_setbrightness(struct remote* rmt, float f)
-{
-	struct message* msg;
-
-	if (!rmt)
-		return;
-
-	msg = new_message(MT_SETBRIGHTNESS);
-
-	MB(msg, setbrightness).brightness = f;
-
-	enqueue_message(rmt, msg);
 }
 
 static void set_node_display_brightness(struct node* node, float f)
@@ -1112,7 +1111,6 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 {
 	int loglen;
 	char* logmsg;
-	struct message* resp;
 
 	switch (msg->body.type) {
 	case MT_READY:
@@ -1134,11 +1132,8 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 
 	case MT_SETCLIPBOARD:
 		set_clipboard_text(MB(msg, setclipboard).text);
-		if (focused_node->remote) {
-			resp = new_message(MT_SETCLIPBOARD);
-			MB(resp, setclipboard).text = get_clipboard_text();
-			enqueue_message(focused_node->remote, resp);
-		}
+		if (focused_node->remote)
+			send_setclipboard(focused_node->remote, get_clipboard_text());
 		break;
 
 	case MT_LOGMSG:
