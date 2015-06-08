@@ -899,6 +899,7 @@ static int reconnect_remotes(void)
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
 	int count;
+	struct remote* rmt;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
 
@@ -934,6 +935,15 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		xfree(modkeys);
 		shutdown_master();
 		exit(0);
+
+	case AT_CLEARCLIPBOARD:
+		info("clearing clipboard on all connected nodes\n");
+		set_clipboard_text("");
+		for_each_remote (rmt) {
+			if (rmt->state == CS_CONNECTED)
+				send_setclipboard(rmt, xstrdup(""));
+		}
+		break;
 
 	default:
 		errlog("unknown action type %d\n", a->type);

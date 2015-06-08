@@ -178,6 +178,7 @@ struct focus_target {
 struct action {
 	enum {
 		AT_FOCUS,
+		AT_CLEARCLIPBOARD,
 		AT_RECONNECT,
 		AT_QUIT,
 	} type;

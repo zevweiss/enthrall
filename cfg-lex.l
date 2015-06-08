@@ -35,14 +35,15 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "yes" return KW_YES;
 "no"  return KW_NO;
 
-"remote-shell"  return KW_REMOTESHELL;
-"bind-address"  return KW_BINDADDR;
-"identity-file" return KW_IDENTITYFILE;
-"hotkey"        return KW_HOTKEY;
-"param"         return KW_PARAM;
-"focus"         return KW_FOCUS;
-"reconnect"     return KW_RECONNECT;
-"quit"          return KW_QUIT;
+"remote-shell"    return KW_REMOTESHELL;
+"bind-address"    return KW_BINDADDR;
+"identity-file"   return KW_IDENTITYFILE;
+"hotkey"          return KW_HOTKEY;
+"param"           return KW_PARAM;
+"focus"           return KW_FOCUS;
+"clear-clipboard" return KW_CLEARCLIPBOARD;
+"reconnect"       return KW_RECONNECT;
+"quit"            return KW_QUIT;
 
 "log-file"  return KW_LOGFILE;
 "log-level" return KW_LOGLEVEL;
