@@ -93,18 +93,18 @@ enum {
 	ET_leftbracket,  /* [ */
 	ET_leftbrace,    /* { */
 	ET_rightbracket, /* ] */
-	ET_rightbrace,	 /* } */
-	ET_backslash,	 /* \ */
-	ET_pipe,	 /* | */
-	ET_semicolon,	 /* ; */
-	ET_colon,	 /* : */
-	ET_singlequote,	 /* ' */
-	ET_doublequote,	 /* " */
-	ET_comma,	 /* , */
-	ET_lessthan,	 /* < */
-	ET_period,	 /* . */
-	ET_greaterthan,	 /* > */
-	ET_slash,	 /* / */
+	ET_rightbrace,   /* } */
+	ET_backslash,    /* \ */
+	ET_pipe,         /* | */
+	ET_semicolon,    /* ; */
+	ET_colon,        /* : */
+	ET_singlequote,  /* ' */
+	ET_doublequote,  /* " */
+	ET_comma,        /* , */
+	ET_lessthan,     /* < */
+	ET_period,       /* . */
+	ET_greaterthan,  /* > */
+	ET_slash,        /* / */
 	ET_qstmark,      /* ? */
 
 	/* Modifier keys */
