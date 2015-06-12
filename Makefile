@@ -7,6 +7,14 @@ RPCGEN = rpcgen
 CFLAGS = -Wall -Werror
 LIBS = -lm
 
+ifneq ($(USE_ASAN),)
+	CFLAGS += -fsanitize=address
+endif
+
+ifneq ($(USE_UBSAN),)
+	CFLAGS += -fsanitize=undefined
+endif
+
 ifneq ($(DEBUG),)
 	CFLAGS += -ggdb3
 else
