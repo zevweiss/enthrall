@@ -1,11 +1,19 @@
 
+# Disable annoying built-in rules
+MAKEFLAGS += -rR
+
 CC = cc
 FLEX = flex
 BISON = bison
 RPCGEN = rpcgen
+LD = $(CC)
+
+LIBS = -lm
 
 CFLAGS = -Wall -Werror
-LIBS = -lm
+LDFLAGS = $(LIBS)
+
+EXE := enthrall
 
 ifneq ($(USE_ASAN),)
 	CFLAGS += -fsanitize=address
@@ -45,7 +53,7 @@ ifeq ($(OS),Darwin)
 	FMWKDIR = $(SDKDIR)/System/Library/Frameworks
 	FRAMEWORKS = CoreFoundation ApplicationServices Carbon IOKit
 	CFLAGS += -iframework$(FMWKDIR) -iframework$(FMWKDIR)/ApplicationServices.framework/Frameworks
-	CFLAGS += $(foreach f,$(FRAMEWORKS),-framework $f)
+	LDFLAGS += $(foreach f,$(FRAMEWORKS),-framework $f)
 else
 	PLATFORM = x11
 	XSUBLIBS = x11 xtst xrandr xi
@@ -60,40 +68,72 @@ else
 	endif
 endif
 
-CFGSRCS = cfg-lex.yy.c cfg-lex.yy.h cfg-parse.tab.c cfg-parse.tab.h
-PROTSRCS = proto.c proto.h
+# OSX compile commands can get quite unreadably long; this keeps it
+# pretty unless explicitly requested.
+ifneq ($V,)
+	I = @:
+	Q =
+else
+	I = @printf "\t%8s: %s\n"
+	Q = @
+endif
 
-GEN = $(CFGSRCS) $(PROTSRCS)
+default: all
+all: $(EXE)
 
-HEADERS = misc.h types.h message.h msgchan.h events.h platform.h kvmap.h \
-	keycodes.h $(PLATFORM)-keycodes.h
+GENSRCS = cfg-lex.yy.c cfg-parse.tab.c proto.c
+GENHDRS = $(GENSRCS:.c=.h)
+
+GEN = $(GENSRCS) $(GENHDRS)
+
+# So make doesn't obnoxiously delete generated files
+.SECONDARY: $(GEN)
 
 SRCS = main.c remote.c message.c msgchan.c kvmap.c misc.c \
-	$(PLATFORM).c $(PLATFORM)-keycodes.c
+	$(PLATFORM).c $(PLATFORM)-keycodes.c $(GENSRCS)
 
-EXE := enthrall
-
-$(EXE): $(SRCS) $(HEADERS) $(CFGSRCS) $(PROTSRCS)
-	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^) $(LIBS)
+OBJS = $(SRCS:.c=.o)
+DEPS = $(foreach o,$(OBJS),.$(o:.o=.d))
 
 %.yy.h: %.yy.c
 	@touch $@
 
 %.yy.c: %.l
-	$(FLEX) --header-file=$*.yy.h -o $@ $<
+	$I LEX $@
+	$Q$(FLEX) --header-file=$(@:.c=.h) -o $@ $<
 
 %.tab.h: %.tab.c
 	@touch $@
 
 %.tab.c: %.y
-	$(BISON) -Wall --defines=$*.tab.h -o $@ $<
+	$I YACC $@
+	$Q$(BISON) -Wall --defines=$(@:.c=.h) -o $@ $<
 
 %.h: %.x
-	$(RPCGEN) -h $< > $@
+	$I RPCGEN $@
+	$Q$(RPCGEN) -h $< -o $@
 
 %.c: %.x
-	$(RPCGEN) -c $< > $@
+	$I RPCGEN $@
+	$Q$(RPCGEN) -c $< -o $@
+
+%.o: %.c .%.d
+	$I CC $@
+	$Q$(CC) -c $(CFLAGS) -o $@ $<
+
+.%.d: %.c
+	@$(CC) $(CFLAGS) -MM -MG -MT "$@ $*.o" -MF $@ $<
+
+$(EXE): $(OBJS)
+	$I LD $@
+	$Q$(LD) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 .PHONY: clean
 clean:
-	rm -f $(EXE) $(GEN)
+	rm -f $(EXE) $(OBJS) $(GEN) $(DEPS)
+
+deps: $(DEPS)
+
+ifneq ($(MAKECMDGOALS),clean)
+-include $(DEPS)
+endif
