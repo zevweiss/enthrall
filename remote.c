@@ -19,6 +19,15 @@ static void shutdown_remote(void)
 		platform_exit();
 }
 
+static void enqueue_message(struct message* msg)
+{
+	if (mc_enqueue_message(&stdio_msgchan, msg)) {
+		/* This isn't likely to actually get anywhere, but... */
+		errlog("failed to enqueue message\n");
+		exit(1);
+	}
+}
+
 static void handle_message(const struct message* msg)
 {
 	struct message* resp;
@@ -28,7 +37,7 @@ static void handle_message(const struct message* msg)
 		move_mousepos(MB(msg, moverel).dx, MB(msg, moverel).dy);
 		resp = new_message(MT_MOUSEPOS);
 		MB(resp, mousepos).pt = get_mousepos();
-		mc_enqueue_message(&stdio_msgchan, resp);
+		enqueue_message(resp);
 		break;
 
 	case MT_MOVEABS:
@@ -47,7 +56,7 @@ static void handle_message(const struct message* msg)
 	case MT_GETCLIPBOARD:
 		resp = new_message(MT_SETCLIPBOARD);
 		MB(resp, setclipboard).text = get_clipboard_text();
-		mc_enqueue_message(&stdio_msgchan, resp);
+		enqueue_message(resp);
 		break;
 
 	case MT_SETCLIPBOARD:
@@ -99,7 +108,7 @@ static void handle_setup_msg(const struct message* msg)
 
 	readymsg = new_message(MT_READY);
 	get_screen_dimensions(&MB(readymsg, ready).screendim);
-	mc_enqueue_message(&stdio_msgchan, readymsg);
+	enqueue_message(readymsg);
 }
 
 /* msgchan callback to handle received messages */
