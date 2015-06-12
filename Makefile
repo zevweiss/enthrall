@@ -71,7 +71,9 @@ HEADERS = misc.h types.h message.h msgchan.h events.h platform.h kvmap.h \
 SRCS = main.c remote.c message.c msgchan.c kvmap.c misc.c \
 	$(PLATFORM).c $(PLATFORM)-keycodes.c
 
-enthrall: $(SRCS) $(HEADERS) $(CFGSRCS) $(PROTSRCS)
+EXE := enthrall
+
+$(EXE): $(SRCS) $(HEADERS) $(CFGSRCS) $(PROTSRCS)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c, $^) $(LIBS)
 
 %.yy.h: %.yy.c
@@ -94,4 +96,4 @@ enthrall: $(SRCS) $(HEADERS) $(CFGSRCS) $(PROTSRCS)
 
 .PHONY: clean
 clean:
-	rm -f enthrall $(GEN)
+	rm -f $(EXE) $(GEN)
