@@ -175,7 +175,27 @@ int fill_msgbuf(int fd, struct partrecv* pr)
 
 	if (!pr->plbuf) {
 		assert(pr->bytes_recvd == MSGHDR_SIZE);
-		pr->plbuf = xmalloc(msgsize);
+		/*
+		 * NOTE: malloc() instead of xmalloc() here is intentional.
+		 * This allocation size is taken directly from raw input from
+		 * the network, and if for some reason a remote starts sending
+		 * bogusly huge messages (large enough to make malloc fail) it
+		 * shouldn't be able to just trivially kill the master (in the
+		 * master, returning an error here will end up with the
+		 * sending remote getting failed, which is the appropriate
+		 * response in this case; in a remote it will just cause the
+		 * remote to exit -- also fine).  An explicit upper bound on
+		 * message size might make sense, but SETCLIPBOARD messages
+		 * can legitimately be quite large, and putting an arbitrary
+		 * limit on that would be a bit unfortunate.  Applying a limit
+		 * to other types of messages would be nice, but sadly at this
+		 * point we don't yet know the message type, so we can't
+		 * really achieve that without breaking into the XDR black
+		 * box.
+		 */
+		pr->plbuf = malloc(msgsize);
+		if (!pr->plbuf)
+			return -ENOMEM;
 	}
 
 	while (to_read > 0) {
