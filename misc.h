@@ -158,6 +158,8 @@ struct kvmap* unflatten_kvmap(const struct kvpair* pairs, u_int numpairs);
 
 void set_clipboard_from_buf(const void* buf, size_t len);
 
+void explicit_bzero(void* p, size_t n);
+
 /*
  * Make a function to produce a gamma value for index 'idx' in a gamma table
  * by scaling (by compressing/expanding the X axis and interpolating, not just

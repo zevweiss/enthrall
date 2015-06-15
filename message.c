@@ -257,13 +257,17 @@ struct message* new_message(msgtype_t type)
 void free_msgbody(struct message* msg)
 {
 	int i;
+	char* s;
 
 	if (msg->from_xdr) {
 		xdr_free((xdrproc_t)xdr_msgbody, (caddr_t)&msg->body);
 	} else {
 		switch (msg->body.type) {
 		case MT_SETCLIPBOARD:
-			xfree(MB(msg, setclipboard).text);
+			/* Content may be sensitive; wipe before freeing. */
+			s = MB(msg, setclipboard).text;
+			explicit_bzero(s, strlen(s));
+			xfree(s);
 			break;
 
 		case MT_SETUP:

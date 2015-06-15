@@ -59,6 +59,16 @@ static struct {
 static char* clipboard_text;
 static Time xselection_owned_since;
 
+/* Clipboard contents are potentially sensitive, so wipe before freeing. */
+static void clear_clipboard_cache(void)
+{
+	if (clipboard_text)
+		explicit_bzero(clipboard_text, strlen(clipboard_text));
+	xfree(clipboard_text);
+	clipboard_text = NULL;
+	xselection_owned_since = 0;
+}
+
 /* Mask combining currently-applied modifiers and mouse buttons */
 static unsigned int xstate;
 
@@ -646,7 +656,7 @@ void platform_exit(void)
 		xfree(hk);
 	}
 
-	xfree(clipboard_text);
+	clear_clipboard_cache();
 }
 
 #if defined(CLOCK_MONOTONIC_RAW)
@@ -1044,9 +1054,7 @@ static void handle_event(XEvent* ev)
 	case SelectionClear:
 		if (ev->xselectionclear.window == xwin
 		    && is_known_clipboard_xatom(ev->xselectionclear.selection)) {
-			xfree(clipboard_text);
-			clipboard_text = NULL;
-			xselection_owned_since = 0;
+			clear_clipboard_cache();
 		}
 		break;
 
@@ -1173,7 +1181,7 @@ int set_clipboard_text(const char* text)
 	int i;
 	Atom atom;
 
-	xfree(clipboard_text);
+	clear_clipboard_cache();
 	clipboard_text = xstrdup(text);
 
 	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {

@@ -146,3 +146,17 @@ void set_clipboard_from_buf(const void* buf, size_t len)
 	set_clipboard_text(tmp);
 	xfree(tmp);
 }
+
+/*
+ * Adapted from Ted Unangst's public-domain explicit_bzero.c (originally in
+ * OpenBSD libc I think, now also elsewhere).
+ *
+ * Indirect bzero through a volatile pointer to hopefully avoid dead-store
+ * optimisation eliminating the call.
+ */
+static void (* volatile enthrall_bzero)(void *, size_t) = bzero;
+
+void explicit_bzero(void* p, size_t n)
+{
+	enthrall_bzero(p, n);
+}
