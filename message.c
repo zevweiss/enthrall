@@ -250,6 +250,31 @@ struct message* new_message(msgtype_t type)
 	return msg;
 }
 
+/* Wipe out any potentially sensitive parts of the given message. */
+static void wipe_message(struct message* msg)
+{
+	size_t sz = 0;
+	void* p = NULL;
+
+	switch (msg->body.type) {
+	case MT_SETCLIPBOARD:
+		p = MB(msg, setclipboard).text;
+		sz = strlen(p);
+		break;
+
+	case MT_KEYEVENT:
+		p = &MB(msg, keyevent).keycode;
+		sz = sizeof(MB(msg, keyevent).keycode);
+		break;
+
+	default:
+		break;
+	}
+
+	if (p)
+		explicit_bzero(p, sz);
+}
+
 /*
  * Free any dynamically-allocated members of the given message, but not the
  * message itself (e.g. for stack-allocated messages).
@@ -257,17 +282,15 @@ struct message* new_message(msgtype_t type)
 void free_msgbody(struct message* msg)
 {
 	int i;
-	char* s;
+
+	wipe_message(msg);
 
 	if (msg->from_xdr) {
 		xdr_free((xdrproc_t)xdr_msgbody, (caddr_t)&msg->body);
 	} else {
 		switch (msg->body.type) {
 		case MT_SETCLIPBOARD:
-			/* Content may be sensitive; wipe before freeing. */
-			s = MB(msg, setclipboard).text;
-			explicit_bzero(s, strlen(s));
-			xfree(s);
+			xfree(MB(msg, setclipboard).text);
 			break;
 
 		case MT_SETUP:
