@@ -26,66 +26,78 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 
 %%
 
-"{" return LBRACE;
-"}" return RBRACE;
-"[" return LBRACKET;
-"]" return RBRACKET;
-"=" return EQ;
+"{"                             return LBRACE;
+"}"                             return RBRACE;
+"["                             return LBRACKET;
+"]"                             return RBRACKET;
+"="                             return EQ;
 
-"yes" return KW_YES;
-"no"  return KW_NO;
+"yes"                           return KW_YES;
+"no"                            return KW_NO;
 
-"remote-shell"    return KW_REMOTESHELL;
-"bind-address"    return KW_BINDADDR;
-"identity-file"   return KW_IDENTITYFILE;
-"hotkey"          return KW_HOTKEY;
-"param"           return KW_PARAM;
-"focus"           return KW_FOCUS;
-"clear-clipboard" return KW_CLEARCLIPBOARD;
-"reconnect"       return KW_RECONNECT;
-"quit"            return KW_QUIT;
+"remote-shell"                  return KW_REMOTESHELL;
+"bind-address"                  return KW_BINDADDR;
+"identity-file"                 return KW_IDENTITYFILE;
+"hotkey"                        return KW_HOTKEY;
+"param"                         return KW_PARAM;
+"focus"                         return KW_FOCUS;
+"clear-clipboard"               return KW_CLEARCLIPBOARD;
+"reconnect"                     return KW_RECONNECT;
+"quit"                          return KW_QUIT;
 
-"log-file"  return KW_LOGFILE;
-"log-level" return KW_LOGLEVEL;
-"syslog"    return KW_SYSLOG;
-"stderr"    return KW_STDERR;
+"log-file"                      return KW_LOGFILE;
+"log-level"                     return KW_LOGLEVEL;
+"syslog"                        return KW_SYSLOG;
+"stderr"                        return KW_STDERR;
 
-"error"   return KW_ERROR;
-"warn"    return KW_WARN;
-"info"    return KW_INFO;
-"verbose" return KW_VERBOSE;
-"debug"   return KW_DEBUG;
-"debug2"  return KW_DEBUG2;
+"error"                         return KW_ERROR;
+"warn"                          return KW_WARN;
+"info"                          return KW_INFO;
+"verbose"                       return KW_VERBOSE;
+"debug"                         return KW_DEBUG;
+"debug2"                        return KW_DEBUG2;
 
-"show-focus"   return KW_SHOWFOCUS;
-"dim-inactive" return KW_DIMINACTIVE;
-"flash-active" return KW_FLASHACTIVE;
-"none"         return KW_NONE;
+"show-focus"                    return KW_SHOWFOCUS;
+"dim-inactive"                  return KW_DIMINACTIVE;
+"flash-active"                  return KW_FLASHACTIVE;
+"none"                          return KW_NONE;
 
-"mouse-switch" return KW_MOUSESWITCH;
-"multi-tap"    return KW_MULTITAP;
-"slide"        return KW_SLIDE;
+"mouse-switch"                  return KW_MOUSESWITCH;
+"multi-tap"                     return KW_MULTITAP;
+"slide"                         return KW_SLIDE;
 
-"show-null-switch" return KW_SHOWNULLSWITCH;
-"hotkey-only"      return KW_HOTKEYONLY;
+"show-null-switch"              return KW_SHOWNULLSWITCH;
+"hotkey-only"                   return KW_HOTKEYONLY;
 
-"reconnect-max-interval" return KW_RECONMAXINT;
-"reconnect-max-tries"    return KW_RECONMAXTRIES;
+"reconnect-max-interval"        return KW_RECONMAXINT;
+"reconnect-max-tries"           return KW_RECONMAXTRIES;
 
-"master"   return KW_MASTER;
-"remote"   return KW_REMOTE;
-"topology" return KW_TOPOLOGY;
-"previous" return KW_PREVIOUS;
+"master"                        return KW_MASTER;
+"remote"                        return KW_REMOTE;
+"topology"                      return KW_TOPOLOGY;
+"previous"                      return KW_PREVIOUS;
 
-"hostname"       return KW_HOSTNAME;
-"port"           return KW_PORT;
-"user"           return KW_USER;
-"remote-command" return KW_REMOTECMD;
+"hostname"                      return KW_HOSTNAME;
+"port"                          return KW_PORT;
+"user"                          return KW_USER;
+"remote-command"                return KW_REMOTECMD;
 
-"left"  { cfg_lval.dir = LEFT; return DIRECTION; }
-"right" { cfg_lval.dir = RIGHT; return DIRECTION; }
-"up"    { cfg_lval.dir = UP; return DIRECTION; }
-"down"  { cfg_lval.dir = DOWN; return DIRECTION; }
+"left" {
+	cfg_lval.dir = LEFT;
+	return DIRECTION;
+}
+"right" {
+	cfg_lval.dir = RIGHT;
+	return DIRECTION;
+}
+"up" {
+	cfg_lval.dir = UP;
+	return DIRECTION;
+}
+"down" {
+	cfg_lval.dir = DOWN;
+	return DIRECTION;
+}
 
 {comment}
 {space}
