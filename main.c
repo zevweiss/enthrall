@@ -1373,7 +1373,7 @@ int main(int argc, char** argv)
 			exit(0);
 
 		default:
-			initerr("Unrecognized option: %c\n", opt);
+			usage(stderr);
 			exit(1);
 		}
 	}
