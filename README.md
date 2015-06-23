@@ -78,29 +78,38 @@ writable by any other user.
 
 ### Notes/Limitations/Known Issues
 
- - When using `show-focus = dim-inactive`, inactive OS X remotes will
-   sometimes (for reasons currently unknown) spontaneously reset
-   themselves to full brightness.
+ - When using `show-focus = dim-inactive`, inactive OS X remotes
+   (witnessed on 10.8 and 10.9, at least) will sometimes spontaneously
+   reset themselves to full brightness.  (I'm 99.9% certain this is
+   simply a "feature" of OSX and not an enthrall bug.)
 
  - On OSX, having iTerm2 (possibly other applications as well, though
    that's the only one I've noticed) as the foreground application
    prevents `enthrall` from intercepting keyboard events, breaking
-   proper operation as a master node.
+   proper operation as a master node.  As a (clumsy) workaround, you
+   can just bring a different application to the foreground before
+   switching enthrall's focus to a remote.
 
  - X11 selection (a.k.a. "clipboard", colloquially) management is
    somewhat incomplete; very large copy/paste operations (tens of
    megabytes) don't work, and may lead to a crash.
 
- - Since this is still in its infancy, the network protocol is
-   unstable and may change in backwards-incompatible ways from one
-   commit to the next.  You should thus (at least for now) always run
-   the same version of `enthrall` on all participating machines.
+ - The network protocol is still unstable and may change in
+   backwards-incompatible ways from one commit to the next.  You
+   should thus (at least for now) always run the same version of
+   `enthrall` on all participating machines.  At some point in the
+   future the protocol should stabilize, but that point has not yet
+   arrived.
 
 ### TODO/Planned Features
 
  - Configurable key-remapping
 
  - Daemonization
+
+ - Scroll-wheel acceleration (perhaps mouse movement as well)
+
+ - (Optionally) use libssh[2] instead of forking an `ssh` subprocess
 
 ### License
 
