@@ -82,22 +82,10 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "user"                          return KW_USER;
 "remote-command"                return KW_REMOTECMD;
 
-"left" {
-	cfg_lval.dir = LEFT;
-	return DIRECTION;
-}
-"right" {
-	cfg_lval.dir = RIGHT;
-	return DIRECTION;
-}
-"up" {
-	cfg_lval.dir = UP;
-	return DIRECTION;
-}
-"down" {
-	cfg_lval.dir = DOWN;
-	return DIRECTION;
-}
+"left"                          return KW_LEFT;
+"right"                         return KW_RIGHT;
+"up"                            return KW_UP;
+"down"                          return KW_DOWN;
 
 {comment}
 {space}

@@ -80,7 +80,6 @@ static struct remote* new_uninit_remote(void)
 %token <i> INTEGER
 %token <d> DECIMAL
 %token <str> STRING
-%token <dir> DIRECTION
 
 %token KW_MASTER KW_REMOTE KW_TOPOLOGY
 
@@ -90,6 +89,8 @@ static struct remote* new_uninit_remote(void)
 %token KW_PREVIOUS KW_RECONMAXINT KW_RECONMAXTRIES KW_CLEARCLIPBOARD
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
+
+%token KW_LEFT KW_RIGHT KW_UP KW_DOWN
 
 %token KW_LOGFILE KW_LOGLEVEL KW_SYSLOG KW_STDERR
 %token KW_ERROR KW_WARN KW_INFO KW_VERBOSE KW_DEBUG KW_DEBUG2
@@ -105,7 +106,7 @@ static struct remote* new_uninit_remote(void)
 %type <dim_fade> dim_fade
 %type <focus_target> focus_target
 %type <link> link
-%type <dir> opt_direction
+%type <dir> direction opt_direction
 %type <str> opt_string
 %type <d> loglevel
 %type <logfile> logfile
@@ -301,7 +302,7 @@ master_opt: remoteshell_setting {
 	st->cfg->hotkeys = hk;
 };
 
-focus_target: DIRECTION {
+focus_target: direction {
 	$$.type = FT_DIRECTION;
 	$$.dir = $1;
 }
@@ -339,10 +340,15 @@ links: EMPTY {
 	st->cfg->topology = ln;
 };
 
-opt_direction: EMPTY { $$ = NO_DIR; }
-| DIRECTION { $$ = $1; };
+direction: KW_LEFT { $$ = LEFT; }
+| KW_RIGHT { $$ = RIGHT; }
+| KW_UP { $$ = UP; }
+| KW_DOWN { $$ = DOWN; };
 
-link: node DIRECTION EQ node opt_direction {
+opt_direction: EMPTY { $$ = NO_DIR; }
+| direction { $$ = $1; };
+
+link: node direction EQ node opt_direction {
 	$$.a.nr = $1;
 	$$.a.dir = $2;
 	$$.b.nr = $4;
