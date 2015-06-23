@@ -87,6 +87,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
 %token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
 %token KW_PREVIOUS KW_RECONMAXINT KW_RECONMAXTRIES KW_CLEARCLIPBOARD
+%token KW_USEPRIVATEAGENT
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -111,7 +112,7 @@ static struct remote* new_uninit_remote(void)
 %type <d> loglevel
 %type <logfile> logfile
 
-%type <i> port_setting fade_steps show_nullswitch
+%type <i> port_setting fade_steps show_nullswitch yesno_bool
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
 %type <str> identityfile_setting
 
@@ -160,6 +161,9 @@ master_opts: EMPTY
 
 realnum: INTEGER { $$ = (double)$1; }
 | DECIMAL { $$ = $1; };
+
+yesno_bool: KW_YES { $$ = 1; }
+| KW_NO { $$ = 0; };
 
 port_setting: KW_PORT EQ INTEGER {
 	$$ = $3;
@@ -287,6 +291,9 @@ master_opt: remoteshell_setting {
 }
 | KW_RECONMAXINT EQ realnum {
 	st->cfg->reconnect.max_interval = (uint64_t)($3 * 1000000);
+}
+| KW_USEPRIVATEAGENT EQ yesno_bool {
+	st->cfg->use_private_ssh_agent = $3;
 }
 | KW_LOGFILE EQ logfile {
 	st->cfg->log.file = $3;

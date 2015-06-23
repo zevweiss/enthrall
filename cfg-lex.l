@@ -72,6 +72,8 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "reconnect-max-interval"        return KW_RECONMAXINT;
 "reconnect-max-tries"           return KW_RECONMAXTRIES;
 
+"use-private-ssh-agent"         return KW_USEPRIVATEAGENT;
+
 "master"                        return KW_MASTER;
 "remote"                        return KW_REMOTE;
 "topology"                      return KW_TOPOLOGY;

@@ -270,6 +270,7 @@ struct config {
 
 	/* default SSH settings, optionally overridden per-remote */
 	struct ssh_config ssh_defaults;
+	int use_private_ssh_agent;
 
 	struct node master;
 };

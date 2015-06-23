@@ -1257,6 +1257,8 @@ static void ssh_agent_reexec(void)
 		argv[i+1] = orig_argv[i];
 	argv[orig_argc+1] = NULL;
 
+	initerr("re-execing under private ssh-agent\n");
+
 	execvp("ssh-agent", argv);
 
 	perror("ssh-agent");
@@ -1306,15 +1308,17 @@ static void ssh_pubkey_setup(void)
 	int i;
 	struct remote* rmt;
 	char** agentkeys = get_agent_keylist();
+	int under_private_agent = !!getenv(ENTHRALL_AGENT_ENV_VAR);
 
-	if (!agentkeys) {
-		if (!getenv(ENTHRALL_AGENT_ENV_VAR)) {
-			initerr("re-execing under private ssh-agent\n");
+	if (under_private_agent && !agentkeys) {
+		initerr("get_agent_keylist() failed under private ssh-agent??\n");
+		exit(1);
+	} else if (!under_private_agent) {
+		if (!agentkeys && !config->use_private_ssh_agent)
+			initerr("unable to contact ssh-agent, overriding "
+			        "use-private-ssh-agent=no\n");
+		if (!agentkeys || config->use_private_ssh_agent)
 			ssh_agent_reexec();
-		} else {
-			initerr("get_agent_keylist() failed under private ssh-agent??\n");
-			exit(1);
-		}
 	}
 
 	if (config->ssh_defaults.identityfile)
