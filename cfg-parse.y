@@ -257,7 +257,12 @@ loglevel: KW_ERROR { $$ = LL_ERROR; }
 logfile: KW_SYSLOG { $$.type = LF_SYSLOG; }
 | KW_STDERR { $$.type = LF_STDERR; }
 | KW_NONE { $$.type = LF_NONE; }
-| STRING { $$.type = LF_FILE; $$.path = $1; };
+| STRING {
+	$$.type = LF_FILE;
+	$$.path = expand_word($1);
+	if (!$$.path)
+		fail_parse(st, "bad syntax in log-file");
+};
 
 master_opt: remoteshell_setting {
 	st->cfg->ssh_defaults.remoteshell = $1;
