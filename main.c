@@ -65,8 +65,8 @@ static void init_logfile(void)
 	case LF_FILE:
 		logfile = fopen(config->log.file.path, "a");
 		if (!logfile) {
-			fprintf(stderr, "Failed to open log file %s\n",
-			        config->log.file.path);
+			fprintf(stderr, "Failed to open log file %s: %s\n",
+			        config->log.file.path, strerror(errno));
 			exit(1);
 		}
 		setlinebuf(logfile);
