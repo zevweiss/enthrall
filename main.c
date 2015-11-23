@@ -1341,6 +1341,31 @@ static void ssh_pubkey_setup(void)
 	xfree(agentkeys);
 }
 
+static void exitsig_handler(int signo)
+{
+	info("Exiting on receipt of signal %d (%s)\n", signo, strsignal(signo));
+	shutdown_master();
+	exit(0);
+}
+
+static void setup_signal_handlers(void)
+{
+	int i;
+	static const int exitsigs[] = { SIGHUP, SIGINT, SIGTERM, SIGQUIT, };
+	static struct sigaction sigact = {
+		.sa_handler = exitsig_handler,
+		.sa_flags = 0,
+	};
+
+	sigemptyset(&sigact.sa_mask);
+
+	for (i = 0; i < ARR_LEN(exitsigs); i++) {
+		if (sigaction(exitsigs[i], &sigact, NULL))
+			initerr("Warning: failed to set signal handler for signal %d (%s)\n",
+			        exitsigs[i], strsignal(exitsigs[i]));
+	}
+}
+
 static void usage(FILE* out)
 {
 	fprintf(out, "Usage: %s CONFIGFILE\n", progname);
@@ -1449,6 +1474,8 @@ int main(int argc, char** argv)
 
 	for_each_remote (rmt)
 		setup_remote(rmt);
+
+	setup_signal_handlers();
 
 	run_event_loop();
 
