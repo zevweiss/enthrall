@@ -109,13 +109,31 @@ DEPS = $(foreach o,$(OBJS),.$(o:.o=.d))
 	$I YACC $@
 	$Q$(BISON) -Wall --defines=$(@:.c=.h) -o $@ $<
 
+# Sigh.  rpcgen is kind of brain-damaged in ways that make it difficult to
+# work with nicely from makefiles.  This is a manual workaround that:
+#
+#   - ensures if rpcgen succeeds, the output file is updated even if it
+#     already existed (not achieved by 'rpcgen -h -o foo.h foo.x')
+#
+#   - ensures that if rpcgen fails, the output file remains untouched with its
+#     original timestamp (not achieved by 'rpcgen -h foo.x > foo.h')
+#
+#   - doesn't cause rpcgen to generate stupid (syntactically invalid) names for
+#     the include-guard macros in generated in its '-h' output (not achieved by
+#     'rpcgen -h -o foo.h.tmp foo.x && mv foo.h.tmp foo.h')
+#
+# $1: codegen mode (-h or -c)
+# $2: input file (foo.x)
+# $3: output file (foo.h or foo.c)
+rpcgen = $(RPCGEN) $1 $2 > .$3.tmp && mv .$3.tmp $3 || { rm -f .$3.tmp; false; }
+
 %.h: %.x
 	$I RPCGEN $@
-	$Q$(RPCGEN) -h $< -o $@
+	$Q$(call rpcgen,-h,$<,$@)
 
 %.c: %.x
 	$I RPCGEN $@
-	$Q$(RPCGEN) -c $< -o $@
+	$Q$(call rpcgen,-c,$<,$@)
 
 %.o: %.c .%.d
 	$I CC $@
