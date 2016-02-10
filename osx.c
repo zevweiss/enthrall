@@ -1147,6 +1147,8 @@ static void handle_scrollevent(CGEventRef ev)
 	send_clickevent(focused_node->remote, mb, PR_RELEASE);
 }
 
+static CFMachPortRef evtapport;
+
 static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CGEventRef ev,
                                  void* arg)
 {
@@ -1218,6 +1220,13 @@ static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CG
 		handle_flagschanged(old_modflags, modflags);
 		break;
 
+	case kCGEventTapDisabledByUserInput:
+		warn("Unexpected event: kCGEventTapDisabledByUserInput? (Re-enabling...)");
+		/* Fallthrough */
+	case kCGEventTapDisabledByTimeout:
+		CGEventTapEnable(evtapport, true);
+		break;
+
 	default:
 		if ((evtype < (sizeof(known_unknowns) * CHAR_BIT) - 1)
 		    && !(known_unknowns & (1ULL << evtype))) {
@@ -1232,7 +1241,6 @@ static CGEventRef evtap_callback(CGEventTapProxy tapprox, CGEventType evtype, CG
 
 static void setup_event_tap(void)
 {
-	CFMachPortRef evtapport;
 	CFRunLoopSourceRef tapsrc;
 
 	check_assistive_device_access();
