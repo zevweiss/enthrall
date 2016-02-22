@@ -728,6 +728,31 @@ static void indicate_switch(struct node* from, struct node* to)
 }
 
 /*
+ * If the given remote is connected, do nothing and return 0.  Otherwise
+ * initiate a reconnection attempt and return 1.
+ */
+static int reconnect_remote(struct remote* rmt)
+{
+	if (rmt->state == CS_CONNECTED)
+		return 0;
+
+	if (rmt->reconnect_timer) {
+		if (!cancel_call(rmt->reconnect_timer))
+			warn("Failed to cancel reconnect_timer for remote %s\n",
+			     rmt->node.name);
+	}
+
+	if (rmt->state == CS_SETTINGUP)
+		disconnect_remote(rmt);
+
+	rmt->failcount = 0;
+
+	setup_remote(rmt);
+
+	return 1;
+}
+
+/*
  * A special focus-switch for when the focused remote fails; in this case we
  * just revert focus directly to the master.
  */
@@ -752,7 +777,8 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 	if (!n) {
 		to = focused_node;
 	} else if (is_remote(n) && n->remote->state != CS_CONNECTED) {
-		info("Remote %s not connected, can't focus\n", n->name);
+		info("Remote %s not connected, attempting to reconnect...\n", n->name);
+		reconnect_remote(n->remote);
 		to = focused_node;
 	} else {
 		to = n;
@@ -873,25 +899,8 @@ static int reconnect_remotes(void)
 	struct remote* rmt;
 	int count = 0;
 
-	for_each_remote (rmt) {
-		if (rmt->state == CS_CONNECTED)
-			continue;
-
-		if (rmt->reconnect_timer) {
-			if (!cancel_call(rmt->reconnect_timer))
-				warn("Failed to cancel reconnect_timer for remote %s\n",
-				     rmt->node.name);
-		}
-
-		if (rmt->state == CS_SETTINGUP)
-			disconnect_remote(rmt);
-
-		rmt->failcount = 0;
-
-		setup_remote(rmt);
-
-		count += 1;
-	}
+	for_each_remote (rmt)
+		count += reconnect_remote(rmt);
 
 	return count;
 }
