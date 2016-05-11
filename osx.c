@@ -1040,11 +1040,8 @@ static void check_assistive_device_access(void)
 	const void* axdictvals[] = { (void*)kCFBooleanTrue, };
 	CFDictionaryRef axdict = CFDictionaryCreate(NULL, axdictkeys, axdictvals, 1, NULL, NULL);
 
-	if (!axdict) {
-		initerr("failed to create CFDictionaryRef\n");
-		abort();
-	}
-
+	if (!axdict)
+		initdie("failed to create CFDictionaryRef\n");
 
 	if (!AXIsProcessTrustedWithOptions(axdict)) {
 		initerr("Not trusted for assistive device access.\n");
@@ -1248,16 +1245,12 @@ static void setup_event_tap(void)
 	evtapport = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap,
 	                             kCGEventTapOptionDefault, kCGEventMaskForAllEvents,
 	                             evtap_callback, NULL);
-	if (!evtapport) {
-		initerr("Can't create event tap!\n");
-		abort();
-	}
+	if (!evtapport)
+		initdie("Can't create event tap!\n");
 
 	tapsrc = CFMachPortCreateRunLoopSource(NULL, evtapport, 0);
-	if (!tapsrc) {
-		initerr("CFMachPortCreateRunLoopSource() failed\n");
-		abort();
-	}
+	if (!tapsrc)
+		initdie("CFMachPortCreateRunLoopSource() failed\n");
 
 	CFRunLoopAddSource(CFRunLoopGetMain(), tapsrc, kCFRunLoopCommonModes);
 

@@ -528,10 +528,8 @@ static void resolve_noderef(struct noderef* n)
 	if (n->type == NT_TMPNAME) {
 		name = n->name;
 		node = find_node(name);
-		if (!node) {
-			initerr("No such remote: '%s'\n", n->name);
-			exit(1);
-		}
+		if (!node)
+			initdie("No such remote: '%s'\n", n->name);
 		n->type = NT_NODE;
 		n->node = node;
 		xfree(name);
@@ -1291,19 +1289,15 @@ static void load_id(char* keyfile, char*** keylist)
 	pid = fork();
 	if (!pid) {
 		execvp("ssh-add", argv);
-		perror("ssh-add");
-		exit(1);
+		initdie("ssh-add: %m\n");
 	}
 
-	if (waitpid(pid, &status, 0) != pid) {
-		perror("waitpid");
-		exit(1);
-	}
+	if (waitpid(pid, &status, 0) != pid)
+		initdie("waitpid: %m\n");
 
-	if (WEXITSTATUS(status)) {
-		initerr("failed to add ssh key %s\n", keyfile);
-		exit(1);
-	} else {
+	if (WEXITSTATUS(status))
+		initdie("failed to add ssh key %s\n", keyfile);
+	else {
 		/* Add keyfile to the list of loaded keys */
 		*keylist = xrealloc(*keylist, sizeof(**keylist) * (numkeys+2));
 		(*keylist)[numkeys] = xstrdup(keyfile);
@@ -1319,10 +1313,9 @@ static void ssh_pubkey_setup(void)
 	char** agentkeys = get_agent_keylist();
 	int under_private_agent = !!getenv(ENTHRALL_AGENT_ENV_VAR);
 
-	if (under_private_agent && !agentkeys) {
-		initerr("get_agent_keylist() failed under private ssh-agent??\n");
-		exit(1);
-	} else if (!under_private_agent) {
+	if (under_private_agent && !agentkeys)
+		initdie("get_agent_keylist() failed under private ssh-agent??\n");
+	else if (!under_private_agent) {
 		if (!agentkeys && !config->use_private_ssh_agent)
 			initerr("unable to contact ssh-agent, overriding "
 			        "use-private-ssh-agent=no\n");
@@ -1339,10 +1332,8 @@ static void ssh_pubkey_setup(void)
 	}
 
 	if (!agentkeys[0]) {
-		if (run_command("ssh-add", 1)) {
-			initerr("failed to add keys to ssh agent\n");
-			exit(1);
-		}
+		if (run_command("ssh-add", 1))
+			initdie("failed to add keys to ssh agent\n");
 	}
 
 	for (i = 0; agentkeys[i]; i++)
@@ -1431,31 +1422,21 @@ int main(int argc, char** argv)
 		run_remote();
 	} else if (argc == 1) {
 		opmode = MASTER;
-	} else {
-		initerr("excess arguments\n");
-		exit(1);
-	}
+	} else
+		initdie("excess arguments\n");
 
 	cfgfile = fopen(argv[0], "r");
-	if (!cfgfile) {
-		initerr("%s: %s\n", argv[0], strerror(errno));
-		exit(1);
-	}
+	if (!cfgfile)
+		initdie("%s: %s\n", argv[0], strerror(errno));
 
-	if (fstat(fileno(cfgfile), &st)) {
-		initerr("fstat(%s): %s\n", argv[0], strerror(errno));
-		exit(1);
-	}
+	if (fstat(fileno(cfgfile), &st))
+		initdie("fstat(%s): %s\n", argv[0], strerror(errno));
 
-	if (st.st_uid != getuid()) {
-		initerr("Error: bad ownership on %s\n", argv[0]);
-		exit(1);
-	}
+	if (st.st_uid != getuid())
+		initdie("Error: bad ownership on %s\n", argv[0]);
 
-	if (st.st_mode & (S_IWGRP|S_IWOTH)) {
-		initerr("Error: bad permissions on %s (writable by others)\n", argv[0]);
-		exit(1);
-	}
+	if (st.st_mode & (S_IWGRP|S_IWOTH))
+		initdie("Error: bad permissions on %s (writable by others)\n", argv[0]);
 
 	if (parse_cfg(cfgfile, config))
 		exit(1);
@@ -1465,10 +1446,8 @@ int main(int argc, char** argv)
 
 	init_logfile();
 
-	if (platform_init(NULL, mousepos_cb)) {
-		initerr("platform_init failed\n");
-		exit(1);
-	}
+	if (platform_init(NULL, mousepos_cb))
+		initdie("platform_init failed\n");
 
 	if (!config->master.name)
 		config->master.name = xstrdup("<master>");

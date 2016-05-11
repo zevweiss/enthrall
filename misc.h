@@ -109,6 +109,7 @@ enum {
 };
 
 __printf(1, 2) void initerr(const char* fmt, ...);
+#define initdie(...) do { initerr(__VA_ARGS__); exit(1); } while (0)
 
 __printf(2, 3) void mlog(unsigned int level, const char* fmt, ...);
 
