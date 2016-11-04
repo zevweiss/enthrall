@@ -109,7 +109,7 @@ static struct remote* new_uninit_remote(void)
 %type <link> link
 %type <dir> direction opt_direction
 %type <str> opt_string
-%type <d> loglevel
+%type <i> loglevel
 %type <logfile> logfile
 
 %type <i> port_setting fade_steps show_nullswitch yesno_bool
