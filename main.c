@@ -276,16 +276,25 @@ void send_moverel(struct remote* rmt, int32_t dx, int32_t dy)
 void send_clickevent(struct remote* rmt, mousebutton_t button, pressrel_t pr)
 {
 	struct message* msg;
+	unsigned int i, count = 1;
 
 	if (!rmt)
 		return;
 
-	msg = new_message(MT_CLICKEVENT);
+	if (button == MB_SCROLLUP || button == MB_SCROLLDOWN) {
+		count = abs(rmt->scrollmult);
+		if (rmt->scrollmult < 0)
+			button = (button == MB_SCROLLUP) ? MB_SCROLLDOWN : MB_SCROLLUP;
+	}
 
-	MB(msg, clickevent).button = button;
-	MB(msg, clickevent).pressrel = pr;
+	for (i = 0; i < count; i++) {
+		msg = new_message(MT_CLICKEVENT);
 
-	enqueue_message(rmt, msg);
+		MB(msg, clickevent).button = button;
+		MB(msg, clickevent).pressrel = pr;
+
+		enqueue_message(rmt, msg);
+	}
 }
 
 void send_setbrightness(struct remote* rmt, float f)

@@ -137,6 +137,9 @@ struct remote {
 	/* timer for determing when to next attempt a reconnect */
 	timer_ctx_t reconnect_timer;
 
+	/* multiplier for scroll-wheel events (some systems scroll "slower" than others) */
+	int scrollmult;
+
 	/* msgchan by which the master exchanges messages with this remote */
 	struct msgchan msgchan;
 

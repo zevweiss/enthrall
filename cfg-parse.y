@@ -64,6 +64,7 @@ static struct remote* new_uninit_remote(void)
 	rmt->state = CS_NEW;
 	rmt->params = new_kvmap();
 	rmt->node.remote = rmt;
+	rmt->scrollmult = 1;
 
 	return rmt;
 }
@@ -87,7 +88,7 @@ static struct remote* new_uninit_remote(void)
 %token KW_IDENTITYFILE KW_PARAM KW_SHOWFOCUS KW_DIMINACTIVE KW_FLASHACTIVE
 %token KW_NONE KW_MOUSESWITCH KW_MULTITAP KW_SHOWNULLSWITCH KW_HOTKEYONLY KW_QUIT
 %token KW_PREVIOUS KW_RECONMAXINT KW_RECONMAXTRIES KW_CLEARCLIPBOARD
-%token KW_USEPRIVATEAGENT
+%token KW_USEPRIVATEAGENT KW_SCROLLMULT
 
 %token KW_USER KW_HOSTNAME KW_PORT KW_REMOTECMD
 
@@ -115,6 +116,7 @@ static struct remote* new_uninit_remote(void)
 %type <i> port_setting fade_steps show_nullswitch yesno_bool
 %type <str> bindaddr_setting user_setting remotecmd_setting remoteshell_setting
 %type <str> identityfile_setting
+%type <i> scrollmult_setting
 
 %debug
 
@@ -173,6 +175,8 @@ port_setting: KW_PORT EQ INTEGER {
 user_setting: KW_USER EQ STRING { $$ = $3; };
 bindaddr_setting: KW_BINDADDR EQ STRING { $$ = $3; };
 remotecmd_setting: KW_REMOTECMD EQ STRING { $$ = $3; };
+
+scrollmult_setting: KW_SCROLLMULT EQ INTEGER { $$ = $3; };
 
 remoteshell_setting: KW_REMOTESHELL EQ STRING {
 	$$ = expand_word($3);
@@ -416,6 +420,9 @@ remote_opt: KW_HOSTNAME EQ STRING {
 }
 | remotecmd_setting {
 	st->nextrmt->sshcfg.remotecmd = $1;
+}
+| scrollmult_setting {
+	st->nextrmt->scrollmult = $1;
 }
 | KW_PARAM LBRACKET STRING RBRACKET EQ STRING {
 	kvmap_put(st->nextrmt->params, $3, $6);

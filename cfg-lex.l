@@ -84,6 +84,8 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "user"                          return KW_USER;
 "remote-command"                return KW_REMOTECMD;
 
+"scroll-multiplier"             return KW_SCROLLMULT;
+
 "left"                          return KW_LEFT;
 "right"                         return KW_RIGHT;
 "up"                            return KW_UP;
