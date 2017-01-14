@@ -43,6 +43,7 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "focus"                         return KW_FOCUS;
 "clear-clipboard"               return KW_CLEARCLIPBOARD;
 "reconnect"                     return KW_RECONNECT;
+"halt-reconnects"               return KW_HALT_RECONNECTS;
 "quit"                          return KW_QUIT;
 
 "log-file"                      return KW_LOGFILE;

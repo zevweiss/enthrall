@@ -183,6 +183,7 @@ struct action {
 		AT_FOCUS,
 		AT_CLEARCLIPBOARD,
 		AT_RECONNECT,
+		AT_HALT_RECONNECTS,
 		AT_QUIT,
 	} type;
 	union {

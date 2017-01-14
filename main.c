@@ -912,6 +912,34 @@ static int reconnect_remotes(void)
 	return count;
 }
 
+static int halt_reconnects(void)
+{
+	struct remote* rmt;
+	int count = 0;
+
+	for_each_remote (rmt) {
+		if (rmt->state == CS_SETTINGUP || rmt->state == CS_FAILED) {
+			info("halting connection attempts to remote '%s'\n", rmt->node.name);
+
+			if (rmt->state == CS_SETTINGUP)
+				disconnect_remote(rmt);
+
+			if (rmt->state == CS_FAILED) {
+				if (rmt->reconnect_timer)
+					cancel_call(rmt->reconnect_timer);
+				else
+					bug("remote '%s' in CS_FAILED state, but reconnect_timer is unset\n",
+					    rmt->node.name);
+			}
+
+			rmt->state = CS_PERMFAILED;
+			count += 1;
+		}
+	}
+
+	return count;
+}
+
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
 	int count;
@@ -944,6 +972,10 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			     count == 1 ? "" : "s");
 		else
 			info("All remotes are connected; nothing to do for reconnect.\n");
+
+	case AT_HALT_RECONNECTS:
+		if (!halt_reconnects())
+			info("halt-reconnects: no ongoing connection attempts to halt.\n");
 		break;
 
 	case AT_QUIT:
