@@ -100,7 +100,8 @@ static inline void fdset_add(int fd, fd_set* set, int* nfds)
 }
 
 enum {
-	LL_ERROR = 1,
+	LL_BUG = 1,
+	LL_ERROR,
 	LL_WARN,
 	LL_INFO,
 	LL_VERBOSE,
@@ -115,6 +116,7 @@ __printf(2, 3) void mlog(unsigned int level, const char* fmt, ...);
 
 #define errlog(fmt, ...) mlog(LL_ERROR, "Error: "fmt, ##__VA_ARGS__)
 #define warn(fmt, ...) mlog(LL_WARN, "Warning: "fmt, ##__VA_ARGS__)
+#define bug(fmt, ...) mlog(LL_BUG, "BUG (please report!): "fmt, ##__VA_ARGS__)
 #define info(fmt, ...) mlog(LL_INFO, fmt, ##__VA_ARGS__)
 #define vinfo(fmt, ...) mlog(LL_VERBOSE, fmt, ##__VA_ARGS__)
 #define debug(fmt, ...) mlog(LL_DEBUG, fmt, ##__VA_ARGS__)
