@@ -104,8 +104,7 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 }
 
 {integer} {
-	char* tmp;
-	cfg_lval.i = strtoll(cfg_text, &tmp, 10);
+	cfg_lval.i = strtoll(cfg_text, NULL, 10);
 	return INTEGER;
 }
 
