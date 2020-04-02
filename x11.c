@@ -600,6 +600,8 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 	blackpx = BlackPixel(xdisp, XDefaultScreen(xdisp));
 	xwin = XCreateSimpleWindow(xdisp, xrootwin, 0, 0, 1, 1, 0, blackpx, blackpx);
 
+	XStoreName(xdisp, xwin, "enthrall");
+
 	et_selection_data = XInternAtom(xdisp, "ET_SELECTION_DATA", False);
 	utf8_string_atom = XInternAtom(xdisp, "UTF8_STRING", False);
 	targets_atom = XInternAtom(xdisp, "TARGETS", False);
