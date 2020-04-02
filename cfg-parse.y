@@ -71,8 +71,6 @@ static struct remote* new_uninit_remote(void)
 
 %}
 
-%token HASH
-%token NEWLINE
 %token EQ
 %token LBRACE RBRACE
 %token LBRACKET RBRACKET
