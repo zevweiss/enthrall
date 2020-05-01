@@ -79,9 +79,9 @@ writable by any other user.
 ### Notes/Limitations/Known Issues
 
  - When using `show-focus = dim-inactive`, inactive OS X remotes
-   (witnessed on 10.8 and 10.9, at least) will sometimes spontaneously
-   reset themselves to full brightness.  (I'm 99.9% certain this is
-   simply a "feature" of OSX and not an enthrall bug.)
+   (witnessed on 10.8, 10.9, and 10.12 at least) will sometimes
+   spontaneously reset themselves to full brightness.  (I'm 99%
+   certain this is simply a "feature" of OSX and not an enthrall bug.)
 
  - On OSX, having iTerm2 (possibly other applications as well, though
    that's the only one I've noticed) as the foreground application
