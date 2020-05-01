@@ -141,6 +141,7 @@ enum {
 	ET_down,
 	ET_backspace,
 	ET_delete,
+	ET_insert,
 	ET_home,
 	ET_end,
 	ET_pageup,

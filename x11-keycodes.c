@@ -141,6 +141,7 @@ static keycode_t basic_fromkeysym[] = {
 	[XK_Down]      = ET_down,
 	[XK_BackSpace] = ET_backspace,
 	[XK_Delete]    = ET_delete,
+	[XK_Insert]    = ET_insert,
 	[XK_Home]      = ET_home,
 	[XK_End]       = ET_end,
 	[XK_Page_Up]   = ET_pageup,
