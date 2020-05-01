@@ -1194,15 +1194,18 @@ int set_clipboard_text(const char* text)
 {
 	int i;
 	Atom atom;
+	Window newowner;
 
 	clear_clipboard_cache();
 	clipboard_text = xstrdup(text);
 
 	for (i = 0; i < ARR_LEN(clipboard_xatoms); i++) {
 		atom = clipboard_xatoms[i].atom;
-		XSetSelectionOwner(xdisp, atom, xwin, last_xevent_time);
-		if (XGetSelectionOwner(xdisp, atom) != xwin) {
-			errlog("failed to take ownership of X selection\n");
+		XSetSelectionOwner(xdisp, atom, xwin, CurrentTime);
+		newowner = XGetSelectionOwner(xdisp, atom);
+		if (newowner != xwin) {
+			errlog("failed to take ownership of X selection: "
+			       "expected 0x%lx, got 0x%lx\n", xwin, newowner);
 			return -1;
 		}
 	}
