@@ -942,7 +942,6 @@ static int halt_reconnects(void)
 
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
-	int count;
 	struct remote* rmt;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
@@ -966,12 +965,9 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 		break;
 
 	case AT_RECONNECT:
-		count = reconnect_remotes();
-		if (count)
-			info("Attempting reconnection to %d remote%s\n", count,
-			     count == 1 ? "" : "s");
-		else
-			info("All remotes are connected; nothing to do for reconnect.\n");
+		if (!reconnect_remotes())
+			info("reconnect: all remotes are connected; nothing to do.\n");
+		break;
 
 	case AT_HALT_RECONNECTS:
 		if (!halt_reconnects())
