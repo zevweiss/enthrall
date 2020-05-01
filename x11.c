@@ -1078,6 +1078,18 @@ static void handle_event(XEvent* ev)
 		}
 		break;
 
+	case MappingNotify:
+		if (ev->xmapping.request == MappingKeyboard
+		    || ev->xmapping.request == MappingModifier) {
+			debug("refreshing X keyboard mapping\n");
+			XRefreshKeyboardMapping(&ev->xmapping);
+		} else if (ev->xmapping.request == MappingPointer)
+			debug("received MappingPointer notification\n");
+		else
+			vinfo("received unknown MappingNotify request %d\n",
+			      ev->xmapping.request);
+		break;
+
 	case MapNotify:
 	case UnmapNotify:
 	case DestroyNotify:
