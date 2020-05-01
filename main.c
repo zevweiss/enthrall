@@ -8,9 +8,9 @@
 #include <limits.h>
 #include <getopt.h>
 #include <syslog.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/select.h>
-#include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
