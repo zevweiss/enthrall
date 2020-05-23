@@ -715,13 +715,13 @@ struct xypoint get_mousepos(void)
 
 void set_mousepos(struct xypoint pt)
 {
-	XWarpPointer(xdisp, None, xrootwin, 0, 0, 0, 0, pt.x, pt.y);
+	XTestFakeMotionEvent(xdisp, -1, pt.x, pt.y, CurrentTime);
 	XFlush(xdisp);
 }
 
 void move_mousepos(int32_t dx, int32_t dy)
 {
-	XWarpPointer(xdisp, None, None, 0, 0, 0, 0, dx, dy);
+	XTestFakeRelativeMotionEvent(xdisp, dx, dy, CurrentTime);
 	XFlush(xdisp);
 	if (mousepos_handler)
 		mousepos_handler(get_mousepos());
