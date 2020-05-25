@@ -1164,6 +1164,10 @@ static void mousepos_cb(struct xypoint pt)
 	check_edgeevents(&config->master, pt);
 }
 
+static void edgeevent_cb(edgeevent_t type, direction_t dir, int32_t delta, struct xypoint pos)
+{
+}
+
 static void handle_message(struct remote* rmt, const struct message* msg)
 {
 	int loglen;
@@ -1489,7 +1493,7 @@ int main(int argc, char** argv)
 
 	init_logfile();
 
-	if (platform_init(NULL, mousepos_cb))
+	if (platform_init(NULL, mousepos_cb, edgeevent_cb))
 		initdie("platform_init failed\n");
 
 	if (!config->master.name)

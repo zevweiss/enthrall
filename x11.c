@@ -698,7 +698,8 @@ static int xerr_abort(Display* d, XErrorEvent* xev)
 	abort();
 }
 
-int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
+int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
+                  edgeevent_handler_t* edge_handler)
 {
 	int status;
 	unsigned int i;

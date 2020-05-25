@@ -38,8 +38,11 @@ extern struct xypoint screen_center;
 void get_screen_dimensions(struct rectangle* d);
 
 typedef void (mousepos_handler_t)(struct xypoint pt);
+typedef void (edgeevent_handler_t)(edgeevent_t type, direction_t dir, int32_t delta,
+                                   struct xypoint pos);
 
-int platform_init(struct kvmap* params, mousepos_handler_t* edge_handler);
+int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
+                  edgeevent_handler_t* edge_handler);
 void platform_exit(void);
 
 #endif /* PLATFORM_H */

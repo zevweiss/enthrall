@@ -74,6 +74,11 @@ static void handle_message(const struct message* msg)
 	}
 }
 
+static void edgeevent_handler(edgeevent_t type, direction_t dir, int32_t delta,
+                              struct xypoint pos)
+{
+}
+
 /* Initialize the remote after receiving a SETUP message */
 static void handle_setup_msg(const struct message* msg)
 {
@@ -99,7 +104,7 @@ static void handle_setup_msg(const struct message* msg)
 		exit(1);
 	}
 
-	if (platform_init(params, NULL) < 0) {
+	if (platform_init(params, NULL, edgeevent_handler) < 0) {
 		errlog("platform_init() failed\n");
 		exit(1);
 	}
