@@ -56,7 +56,7 @@ ifeq ($(OS),Darwin)
 	LDFLAGS += $(foreach f,$(FRAMEWORKS),-framework $f)
 else
 	PLATFORM = x11
-	XSUBLIBS = x11 xtst xrandr xi
+	XSUBLIBS = x11 xtst xrandr xi xfixes
 
 	EXTRACFLAGS := $(shell pkg-config --cflags $(XSUBLIBS)) \
 		$(shell pkg-config --exists libtirpc && pkg-config --cflags libtirpc && echo "-DUSE_TIRPC")

@@ -13,6 +13,7 @@
 #include <X11/extensions/XTest.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/XInput2.h>
+#include <X11/extensions/Xfixes.h>
 
 #include "types.h"
 #include "misc.h"
@@ -548,6 +549,20 @@ static int xtst_init(void)
 	return 0;
 }
 
+static int xfixes_init(void)
+{
+	int maj, min;
+
+	if (!XFixesQueryVersion(xdisp, &maj, &min) || maj < 5) {
+		initerr("XFixes too old (have %d.%d, need 5.0+)\n", maj, min);
+		return -1;
+	}
+
+	debug("XFixes extension version %d.%d\n", maj, min);
+
+	return 0;
+}
+
 static void log_xerr(unsigned int level, Display* d, XErrorEvent* xev, const char* pfx)
 {
 	char errbuf[1024];
@@ -635,6 +650,8 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 		status = xi2_init();
 	if (!status)
 		status = xtst_init();
+	if (!status)
+		status = xfixes_init();
 
 	return status;
 }

@@ -26,7 +26,8 @@ compile you'll need:
  - GNU `make` (`gmake` on some systems)
  - `flex` (2.5.35 and later known to work)
  - `bison` 2.4 or later
- - On X11 systems: XTest, XInput, and XRandR extensions, `pkg-config`
+ - On X11 systems: XTest, XInput, XFixes, and XRandR extensions,
+   `pkg-config`
  - On systems with glibc 2.32 or later: libtirpc and rpcsvc-proto
  - On Mac OS X: Xcode developer tools
 
