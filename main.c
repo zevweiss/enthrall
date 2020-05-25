@@ -1165,6 +1165,7 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 {
 	int loglen;
 	char* logmsg;
+	struct rectangle screendim;
 
 	switch (msg->body.type) {
 	case MT_READY:
@@ -1175,9 +1176,11 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 		rmt->state = CS_CONNECTED;
 		rmt->failcount = 0;
 		info("remote %s becomes ready.\n", rmt->node.name);
+		screendim = MB(msg, ready).screendim;
 		vinfo("%s screen dimensions: %ux%u\n", rmt->node.name,
-		      MB(msg, ready).screendim.x.max, MB(msg, ready).screendim.y.max);
-		rmt->node.dimensions = MB(msg, ready).screendim;
+		      screendim.x.max - screendim.x.min + 1,
+		      screendim.y.max - screendim.y.min + 1);
+		rmt->node.dimensions = screendim;
 		if (config->focus_hint.type == FH_DIM_INACTIVE)
 			transition_brightness(&rmt->node, 1.0, config->focus_hint.brightness,
 			                      config->focus_hint.duration,
