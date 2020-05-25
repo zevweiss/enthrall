@@ -529,6 +529,8 @@ static int xi2_init(void)
 	ximask.mask_len = sizeof(rawmask);
 	ximask.deviceid = XIAllMasterDevices;
 	XISetMask(ximask.mask, XI_RawMotion);
+	XISetMask(ximask.mask, XI_BarrierHit);
+	XISetMask(ximask.mask, XI_BarrierLeave);
 	status = XISelectEvents(xdisp, xrootwin, &ximask, 1);
 
 	return status ? -1 : 0;
@@ -561,6 +563,52 @@ static int xfixes_init(void)
 	debug("XFixes extension version %d.%d\n", maj, min);
 
 	return 0;
+}
+
+static void make_barrier(int x1, int y1, int x2, int y2, int directions)
+{
+	PointerBarrier pbid = XFixesCreatePointerBarrier(xdisp, xrootwin, x1, y1, x2, y2,
+	                                                 directions, 0, NULL);
+	debug2("screen edge pointer barrier (%d, %d), (%d, %d) = %lu\n", x1, y1, x2, y2, pbid);
+}
+
+static void setup_crtc_barriers(XRRCrtcInfo* ci)
+{
+	unsigned int xmin = ci->x, xmax = ci->x + ci->width - 1;
+	unsigned int ymin = ci->y, ymax = ci->y + ci->height - 1;
+
+	if (xmin == screen_dimensions.x.min)
+		make_barrier(xmin, ymin, xmin, ymax, BarrierPositiveX);
+	if (xmax == screen_dimensions.x.max)
+		make_barrier(xmax, ymin, xmax, ymax, BarrierNegativeX);
+	if (ymin == screen_dimensions.y.min)
+		make_barrier(xmin, ymin, xmax, ymin, BarrierPositiveY);
+	if (ymax == screen_dimensions.y.max)
+		make_barrier(xmin, ymax, xmax, ymax, BarrierNegativeY);
+}
+
+static void setup_pointer_barriers(void)
+{
+	int i;
+	XRRCrtcInfo* crtc;
+	XRRScreenResources* resources = XRRGetScreenResources(xdisp, xrootwin);
+
+	for (i = 0; i < resources->ncrtc; i++) {
+		crtc = XRRGetCrtcInfo(xdisp, resources, resources->crtcs[i]);
+
+		/*
+		 * For some reason there seems to be some magical N+1th
+		 * pseudo-CRTC with width == 0 and height == 0; let's not try
+		 * to set up pointer barriers around that one.
+		 */
+		if (crtc->width > 0 && crtc->height > 0)
+			setup_crtc_barriers(crtc);
+
+		XRRFreeCrtcInfo(crtc);
+	}
+
+	XSync(xdisp, False);
+	XRRFreeScreenResources(resources);
 }
 
 static void log_xerr(unsigned int level, Display* d, XErrorEvent* xev, const char* pfx)
@@ -652,6 +700,9 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler)
 		status = xtst_init();
 	if (!status)
 		status = xfixes_init();
+
+	if (!status)
+		setup_pointer_barriers();
 
 	return status;
 }
@@ -1027,6 +1078,16 @@ static void handle_rawmotion(XIRawEvent* rev)
 	}
 }
 
+static void handle_barrier_hit(XIBarrierEvent* ev)
+{
+	debug2("BarrierHit [%lu], delta: %.2f/%.2f\n", ev->barrier, ev->dx, ev->dy);
+}
+
+static void handle_barrier_leave(XIBarrierEvent* ev)
+{
+	debug2("BarrierLeave [%lu], delta: %.2f/%.2f\n", ev->barrier, ev->dx, ev->dy);
+}
+
 static void handle_event(XEvent* ev)
 {
 
@@ -1087,10 +1148,19 @@ static void handle_event(XEvent* ev)
 		else if (!XGetEventData(xdisp, &ev->xcookie))
 			vinfo("XGetEventData() failed on xi2 GenericEvent\n");
 		else {
-			if (ev->xcookie.evtype != XI_RawMotion)
-				vinfo("unexpected xi2 evtype: %d\n", ev->xcookie.evtype);
-			else
+			switch (ev->xcookie.evtype) {
+			case XI_RawMotion:
 				handle_rawmotion(ev->xcookie.data);
+				break;
+			case XI_BarrierHit:
+				handle_barrier_hit(ev->xcookie.data);
+				break;
+			case XI_BarrierLeave:
+				handle_barrier_leave(ev->xcookie.data);
+				break;
+			default:
+				vinfo("unexpected xi2 evtype: %d\n", ev->xcookie.evtype);
+			}
 			XFreeEventData(xdisp, &ev->xcookie);
 		}
 		break;
