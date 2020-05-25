@@ -4,6 +4,7 @@
 #include <time.h>
 #include <limits.h>
 #include <math.h>
+#include <search.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -565,11 +566,68 @@ static int xfixes_init(void)
 	return 0;
 }
 
+struct ptrbar {
+	PointerBarrier bar;
+	direction_t dir;
+};
+
+/* Root of a tsearch() tree, so we can look up a struct ptrbar from a PointerBarrier */
+static void* pointer_barriers = NULL;
+
+static int pbcmp(const void* va, const void* vb)
+{
+	const struct ptrbar* a = va;
+	const struct ptrbar* b = vb;
+	return (a->bar > b->bar) ? 1 : (a->bar < b->bar) ? -1 : 0;
+}
+
+/* Add pb to pointer_barriers */
+static inline void add_ptrbar(const struct ptrbar* pb)
+{
+	struct ptrbar* old = tsearch(pb, &pointer_barriers, pbcmp);
+	if (*(struct ptrbar**)old != pb)
+		errlog("PointerBarrier %lu already in pbmap", pb->bar);
+}
+
+/* Lookup pbid in pointer_barriers */
+static inline struct ptrbar* find_ptrbar(PointerBarrier pbid)
+{
+	void* v;
+	struct ptrbar k = { .bar = pbid, };
+	v = tfind(&k, &pointer_barriers, pbcmp);
+	return v ? *(struct ptrbar**)v : NULL;
+}
+
 static void make_barrier(int x1, int y1, int x2, int y2, int directions)
 {
+	struct ptrbar* pb;
 	PointerBarrier pbid = XFixesCreatePointerBarrier(xdisp, xrootwin, x1, y1, x2, y2,
 	                                                 directions, 0, NULL);
 	debug2("screen edge pointer barrier (%d, %d), (%d, %d) = %lu\n", x1, y1, x2, y2, pbid);
+
+	pb = xmalloc(sizeof(*pb));
+	pb->bar = pbid;
+
+	switch (directions) {
+	case BarrierPositiveX:
+		pb->dir = LEFT;
+		break;
+	case BarrierNegativeX:
+		pb->dir = RIGHT;
+		break;
+	case BarrierPositiveY:
+		pb->dir = UP;
+		break;
+	case BarrierNegativeY:
+		pb->dir = DOWN;
+		break;
+	default:
+		errlog("pointer barrier direction mask (%d) not a recognized direction",
+		       directions);
+		abort();
+	}
+
+	add_ptrbar(pb);
 }
 
 static void setup_crtc_barriers(XRRCrtcInfo* ci)
@@ -609,6 +667,18 @@ static void setup_pointer_barriers(void)
 
 	XSync(xdisp, False);
 	XRRFreeScreenResources(resources);
+}
+
+static void destroy_pointer_barriers(void)
+{
+	struct ptrbar* pb;
+
+	while (pointer_barriers) {
+		pb = *(struct ptrbar**)pointer_barriers;
+		tdelete(pb, &pointer_barriers, pbcmp);
+		XFixesDestroyPointerBarrier(xdisp, pb->bar);
+		free(pb);
+	}
 }
 
 static void log_xerr(unsigned int level, Display* d, XErrorEvent* xev, const char* pfx)
@@ -712,6 +782,8 @@ void platform_exit(void)
 	struct xhotkey* hk;
 
 	set_display_brightness(1.0);
+
+	destroy_pointer_barriers();
 
 	xrr_exit();
 	XFreeCursor(xdisp, xcursor_blank);
@@ -1080,12 +1152,28 @@ static void handle_rawmotion(XIRawEvent* rev)
 
 static void handle_barrier_hit(XIBarrierEvent* ev)
 {
-	debug2("BarrierHit [%lu], delta: %.2f/%.2f\n", ev->barrier, ev->dx, ev->dy);
+	struct ptrbar* pb = find_ptrbar(ev->barrier);
+
+	if (pb)
+		debug2("BarrierHit [%lu], dir: %u, delta: %.2f/%.2f\n", ev->barrier,
+		       pb->dir, ev->dx, ev->dy);
+	else {
+		errlog("can't find PointerBarrier %lu!", ev->barrier);
+		return;
+	}
 }
 
 static void handle_barrier_leave(XIBarrierEvent* ev)
 {
-	debug2("BarrierLeave [%lu], delta: %.2f/%.2f\n", ev->barrier, ev->dx, ev->dy);
+	struct ptrbar* pb = find_ptrbar(ev->barrier);
+
+	if (pb)
+		debug2("BarrierLeave [%lu], dir: %u, delta: %.2f/%.2f\n", ev->barrier,
+		       pb->dir, ev->dx, ev->dy);
+	else {
+		errlog("can't find PointerBarrier %lu!", ev->barrier);
+		return;
+	}
 }
 
 static void handle_event(XEvent* ev)
