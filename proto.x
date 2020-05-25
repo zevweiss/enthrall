@@ -31,7 +31,8 @@ enum msgtype_t {
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
 	MT_LOGMSG,
-	MT_SETBRIGHTNESS
+	MT_SETBRIGHTNESS,
+	MT_EDGEEVENT
 };
 
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
@@ -175,6 +176,26 @@ struct setbrightness_body {
 	float brightness;
 };
 
+/*
+ * EDGEEVENT: sent by remotes to the master to report the mouse pointer
+ * hitting or leaving the edge of the screen.
+ *
+ * No reply expected.
+ */
+struct edgeevent_body {
+	/* edgeevent_t EE_* value */
+	uint32_t type;
+
+	/* direction_t value */
+	uint32_t dir;
+
+	/* distance/speed indicator (only when type == EE_ARRIVE) */
+	int32_t delta;
+
+	/* current mouse position */
+	struct xypoint pos;
+};
+
 union msgbody switch (msgtype_t type) {
 case MT_SETUP:
 	setup_body setup;
@@ -198,4 +219,6 @@ case MT_LOGMSG:
 	logmsg_body logmsg;
 case MT_SETBRIGHTNESS:
 	setbrightness_body setbrightness;
+case MT_EDGEEVENT:
+	edgeevent_body edgeevent;
 };

@@ -333,6 +333,7 @@ static const char* const msgtype_names[] = {
 	MTN(SETCLIPBOARD),
 	MTN(LOGMSG),
 	MTN(SETBRIGHTNESS),
+	MTN(EDGEEVENT),
 #undef MTN
 };
 

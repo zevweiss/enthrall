@@ -67,7 +67,7 @@ struct ssh_config {
 
 /* Types of "edge events" (mouse pointer arriving at or leaving a screen edge) */
 typedef enum {
-	EE_DEPART,
+	EE_DEPART = 1,
 	EE_ARRIVE,
 } edgeevent_t;
 
