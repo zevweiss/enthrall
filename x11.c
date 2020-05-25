@@ -84,6 +84,9 @@ struct xypoint screen_center;
 /* Handler to fire when mouse position changes (in master mode) */
 static mousepos_handler_t* mousepos_handler;
 
+/* Handler to fire when mouse pointer hits a screen edge */
+static edgeevent_handler_t* edgeevent_handler;
+
 struct scheduled_call {
 	void (*fn)(void* arg);
 	void* arg;
@@ -763,6 +766,7 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
 	                      | get_mod_mask(XK_Num_Lock));
 
 	mousepos_handler = mouse_handler;
+	edgeevent_handler = edge_handler;
 
 	status = xrr_init();
 	if (!status)
@@ -1153,6 +1157,9 @@ static void handle_rawmotion(XIRawEvent* rev)
 
 static void handle_barrier_hit(XIBarrierEvent* ev)
 {
+	double d;
+	unsigned int mask;
+	struct xypoint pos;
 	struct ptrbar* pb = find_ptrbar(ev->barrier);
 
 	if (pb)
@@ -1162,10 +1169,42 @@ static void handle_barrier_hit(XIBarrierEvent* ev)
 		errlog("can't find PointerBarrier %lu!", ev->barrier);
 		return;
 	}
+
+	switch (pb->dir) {
+	case LEFT:
+		d = -ev->dx;
+		break;
+	case RIGHT:
+		d = ev->dx;
+		break;
+	case UP:
+		d = -ev->dy;
+		break;
+	case DOWN:
+		d = ev->dy;
+		break;
+	default:
+		errlog("invalid pointer barrier direction (%u)", pb->dir);
+		return;
+	}
+
+	/*
+	 * Apparent movement *away* from the barrier on a *hit* event seems to
+	 * happen sometimes; ignore it.  (<= instead of < to also ignore
+	 * motion purely along the barrier edge.)
+	 */
+	if (d <= 0.0)
+		return;
+
+	pos = get_mousepos_and_mask(&mask);
+	if (edgeevent_handler && !mask)
+		edgeevent_handler(EE_ARRIVE, pb->dir, lround(d), pos);
 }
 
 static void handle_barrier_leave(XIBarrierEvent* ev)
 {
+	unsigned int mask;
+	struct xypoint pos;
 	struct ptrbar* pb = find_ptrbar(ev->barrier);
 
 	if (pb)
@@ -1175,6 +1214,10 @@ static void handle_barrier_leave(XIBarrierEvent* ev)
 		errlog("can't find PointerBarrier %lu!", ev->barrier);
 		return;
 	}
+
+	pos = get_mousepos_and_mask(&mask);
+	if (edgeevent_handler && !mask)
+		edgeevent_handler(EE_DEPART, pb->dir, 0, pos);
 }
 
 static void handle_event(XEvent* ev)
