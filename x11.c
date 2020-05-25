@@ -1480,7 +1480,8 @@ static void handle_fds(void)
 		fdmon_unref(mfd);
 	}
 
-	if (xfd >= 0 && FD_ISSET(xfd, &rfds))
+	if (xfd >= 0
+	    && (FD_ISSET(xfd, &rfds) || XPending(xdisp)))
 		process_events();
 }
 
