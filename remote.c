@@ -74,9 +74,18 @@ static void handle_message(const struct message* msg)
 	}
 }
 
+/* Notify master when our mouse pointer has hit (or left) a screen edge */
 static void edgeevent_handler(edgeevent_t type, direction_t dir, int32_t delta,
                               struct xypoint pos)
 {
+	struct message* msg = new_message(MT_EDGEEVENT);
+
+	MB(msg, edgeevent).type = type;
+	MB(msg, edgeevent).dir = dir;
+	MB(msg, edgeevent).delta = delta;
+	MB(msg, edgeevent).pos = pos;
+
+	enqueue_message(msg);
 }
 
 /* Initialize the remote after receiving a SETUP message */

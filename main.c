@@ -1159,6 +1159,14 @@ static void check_edgeevents(struct node* node, struct xypoint pt)
 	}
 }
 
+static void node_edgeevent(struct node* node, edgeevent_t type, direction_t dir,
+                           int32_t delta, struct xypoint pos)
+{
+	float xpos = (float)pos.x / (float)node->dimensions.x.max;
+	float ypos = (float)pos.y / (float)node->dimensions.y.max;
+	trigger_edgeevent(&node->edgehist[dir], dir, type, xpos, ypos);
+}
+
 static void mousepos_cb(struct xypoint pt)
 {
 	check_edgeevents(&config->master, pt);
@@ -1166,6 +1174,7 @@ static void mousepos_cb(struct xypoint pt)
 
 static void edgeevent_cb(edgeevent_t type, direction_t dir, int32_t delta, struct xypoint pos)
 {
+	node_edgeevent(&config->master, type, dir, delta, pos);
 }
 
 static void handle_message(struct remote* rmt, const struct message* msg)
@@ -1213,6 +1222,16 @@ static void handle_message(struct remote* rmt, const struct message* msg)
 
 	case MT_MOUSEPOS:
 		check_edgeevents(&rmt->node, MB(msg, mousepos).pt);
+		break;
+
+	case MT_EDGEEVENT:
+		if (focused_node != &rmt->node)
+			debug2("EDGEEVENT from non-focused node %s, ignoring.\n",
+			       rmt->node.name);
+		else
+			node_edgeevent(&rmt->node, MB(msg, edgeevent).type,
+			               MB(msg, edgeevent).dir, MB(msg, edgeevent).delta,
+			               MB(msg, edgeevent).pos);
 		break;
 
 	default:
