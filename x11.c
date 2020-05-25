@@ -81,9 +81,6 @@ static struct rectangle screen_dimensions;
 
 struct xypoint screen_center;
 
-/* Handler to fire when mouse position changes (in master mode) */
-static mousepos_handler_t* mousepos_handler;
-
 /* Handler to fire when mouse pointer hits a screen edge */
 static edgeevent_handler_t* edgeevent_handler;
 
@@ -486,53 +483,10 @@ static int xi2_init(void)
 
 	debug("XInput extension version %d.%d\n", maj, min);
 
-	/*
-	 * The Saga of Global Pointer-Tracking under X: a Tale of Woe.
-	 *
-	 * In order to enable mouse-switching, we need to be able to detect
-	 * any time the pointer hits a screen edge, and so need to receive
-	 * pointer motion events at all times.  The initial approach for this
-	 * consisted of retrieving a list of all windows via XQueryTree() at
-	 * initialization time and XSelectInput()ing all of them to request
-	 * delivery of pointer motion events, as well as SubstructureNotify
-	 * events to do the same for any children that pop up.
-	 *
-	 * This worked, mostly, but not always.  Due to a stupid interaction
-	 * between certain applications (Chrome/Chromium being an example at
-	 * hand) and X11, if no one else has requested pointer motion events
-	 * on a window and then we *do* (becoming the only client requesting
-	 * them), pointer motion events then stop propagating up the window
-	 * hierarchy, so said applications stop seeing them.  This manifests
-	 * itself, for example, as Chrome (at least as of version 38) not
-	 * changing its mouse pointer to the link-clicking hand icon when
-	 * mousing over a link.
-	 *
-	 * So we delve into XInput.  I was hoping that just switching out the
-	 * PointerMotion events for XI_Motion events would solve the problem,
-	 * but sadly it seems that even requesting XI_Motion events still
-	 * prevents such applications from receiving their motion events.
-	 *
-	 * So, as a last resort, we use XI_RawMotion events instead, which
-	 * thankfully are just sent to the root window, so we don't need to do
-	 * all the SubstructureNotify child-window tracking.  However, these
-	 * events are also...well, raw.  While this is probably pretty much
-	 * exactly what we want in the case where a remote is focused and
-	 * we're sending relative motion events over to it, in the case where
-	 * the master is focused and we're just trying to pick up on screen
-	 * edge events, it's really not helpful at all.  So, rather than try
-	 * to open-loop re-create the X server's logic in tracking the
-	 * effective logical absolute pointer position by summing up all the
-	 * little deltas the raw events give us (and probably doing a crappy
-	 * job of it), we instead just (inefficiently) call XQueryPointer() to
-	 * see what the server thinks every time we get one.  Sigh.  Ugly, but
-	 * at least it works, and doesn't seem to screw up other clients.
-	 */
-
 	memset(rawmask, 0, sizeof(rawmask));
 	ximask.mask = rawmask;
 	ximask.mask_len = sizeof(rawmask);
 	ximask.deviceid = XIAllMasterDevices;
-	XISetMask(ximask.mask, XI_RawMotion);
 	XISetMask(ximask.mask, XI_BarrierHit);
 	XISetMask(ximask.mask, XI_BarrierLeave);
 	status = XISelectEvents(xdisp, xrootwin, &ximask, 1);
@@ -765,7 +719,6 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
 	relevant_modmask &= ~(get_mod_mask(XK_Scroll_Lock)
 	                      | get_mod_mask(XK_Num_Lock));
 
-	mousepos_handler = mouse_handler;
 	edgeevent_handler = edge_handler;
 
 	status = xrr_init();
@@ -868,8 +821,6 @@ void move_mousepos(int32_t dx, int32_t dy)
 {
 	XTestFakeRelativeMotionEvent(xdisp, dx, dy, CurrentTime);
 	XFlush(xdisp);
-	if (mousepos_handler)
-		mousepos_handler(get_mousepos());
 }
 
 static const mousebutton_t pi_mousebuttons[] = {
@@ -981,8 +932,6 @@ void ungrab_inputs(int restore_mousepos)
 		set_mousepos(saved_mousepos);
 	XSync(xdisp, False);
 }
-
-static struct xypoint last_seen_mousepos;
 
 static void get_xevent(XEvent* e)
 {
@@ -1100,59 +1049,18 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 	send_keyevent(focused_node->remote, kc, pr);
 }
 
-static inline void update_last_mousepos(XMotionEvent* mev)
-{
-	last_seen_mousepos = (struct xypoint){ .x = mev->x_root, .y = mev->y_root, };
-}
-
 static void handle_grabbed_mousemove(XMotionEvent* mev)
 {
 	if (mev->x_root == screen_center.x
 	    && mev->y_root == screen_center.y)
 		return;
 
-	send_moverel(focused_node->remote, mev->x_root - last_seen_mousepos.x,
-	             mev->y_root - last_seen_mousepos.y);
+	send_moverel(focused_node->remote, mev->x_root - screen_center.x,
+	             mev->y_root - screen_center.y);
 
 	if (abs(mev->x_root - screen_center.x) > 1
-	    || abs(mev->y_root - screen_center.y) > 1) {
+	    || abs(mev->y_root - screen_center.y) > 1)
 		set_mousepos(screen_center);
-		last_seen_mousepos = screen_center;
-	} else {
-		update_last_mousepos(mev);
-	}
-}
-
-static void handle_local_mousemove(XMotionEvent* mev)
-{
-	/* Only trigger edge events when no mouse buttons are held */
-	if (mousepos_handler && !(mev->state & MouseButtonMask))
-		mousepos_handler((struct xypoint){ .x = mev->x_root, .y = mev->y_root, });
-
-	update_last_mousepos(mev);
-}
-
-static void handle_rawmotion(XIRawEvent* rev)
-{
-	unsigned int mask;
-	struct xypoint pt;
-
-	if (mousepos_handler) {
-		/*
-		 * It's kind of sad that we're querying the server to retrieve
-		 * the mouse position every time we receive a motion event,
-		 * but every other approach I've tried has problems.  See the
-		 * lengthy comment in xi2_init() for details.
-		 *
-		 * FIXME: should also avoid calling the handler if some other
-		 * client has a keyboard or pointer grab -- unfortunately, I
-		 * don't see a simple way of determining whether or not that's
-		 * the case short of just trying to grab them...
-		 */
-		pt = get_mousepos_and_mask(&mask);
-		if (!mask)
-			mousepos_handler(pt);
-	}
 }
 
 static void handle_barrier_hit(XIBarrierEvent* ev)
@@ -1227,8 +1135,6 @@ static void handle_event(XEvent* ev)
 	case MotionNotify:
 		if (is_remote(focused_node))
 			handle_grabbed_mousemove(&ev->xmotion);
-		else
-			handle_local_mousemove(&ev->xmotion);
 		break;
 
 	case KeyPress:
@@ -1281,9 +1187,6 @@ static void handle_event(XEvent* ev)
 			vinfo("XGetEventData() failed on xi2 GenericEvent\n");
 		else {
 			switch (ev->xcookie.evtype) {
-			case XI_RawMotion:
-				handle_rawmotion(ev->xcookie.data);
-				break;
 			case XI_BarrierHit:
 				handle_barrier_hit(ev->xcookie.data);
 				break;
