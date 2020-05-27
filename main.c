@@ -1150,7 +1150,7 @@ static void check_edgeevents(struct node* node, struct xypoint pt)
 	ypos = (float)pt.y / (float)node->dimensions.y.max;
 
 	for_each_direction (dir) {
-		dirmask = 1U << dir;
+		dirmask = DIRECTION_MASK(dir);
 		if ((oldmask & dirmask) != (newmask & dirmask)) {
 			edgeevtype = (newmask & dirmask) ? EE_ARRIVE : EE_DEPART;
 			if (trigger_edgeevent(&node->edgehist[dir], dir, edgeevtype, xpos, ypos))

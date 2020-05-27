@@ -48,10 +48,12 @@ typedef enum {
 
 typedef uint32_t dirmask_t;
 
-#define LEFTMASK (1U << LEFT)
-#define RIGHTMASK (1U << RIGHT)
-#define UPMASK (1U << UP)
-#define DOWNMASK (1U << DOWN)
+#define DIRECTION_MASK(d) (1U << (d))
+
+#define LEFTMASK DIRECTION_MASK(LEFT)
+#define RIGHTMASK DIRECTION_MASK(RIGHT)
+#define UPMASK DIRECTION_MASK(UP)
+#define DOWNMASK DIRECTION_MASK(DOWN)
 
 #define ALLDIRS_MASK (LEFTMASK|RIGHTMASK|UPMASK|DOWNMASK)
 
