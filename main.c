@@ -1131,12 +1131,31 @@ static dirmask_t point_edgemask(struct xypoint pt, const struct rectangle* scree
 	return mask;
 }
 
+static void node_edgeevent(struct node* node, edgeevent_t type, direction_t dir,
+                           int32_t delta, struct xypoint pos)
+{
+	float xpos, ypos;
+	dirmask_t evmask = DIRECTION_MASK(dir);
+	dirmask_t oldmask = node->edgemask;
+	dirmask_t newmask = (type == EE_ARRIVE) ? (oldmask | evmask) : (oldmask & ~evmask);
+
+	if ((oldmask & evmask) == (newmask & evmask))
+		return;
+
+	node->edgemask = newmask;
+
+	xpos = (float)pos.x / (float)node->dimensions.x.max;
+	ypos = (float)pos.y / (float)node->dimensions.y.max;
+
+	if (trigger_edgeevent(&node->edgehist[dir], dir, type, xpos, ypos))
+		warn("out-of-sync edge event on %s ignored\n", node->name);
+}
+
 static void check_edgeevents(struct node* node, struct xypoint pt)
 {
 	direction_t dir;
 	dirmask_t newmask, oldmask, dirmask;
 	edgeevent_t edgeevtype;
-	float xpos, ypos;
 
 	newmask = point_edgemask(pt, &node->dimensions);
 	oldmask = node->edgemask;
@@ -1146,25 +1165,17 @@ static void check_edgeevents(struct node* node, struct xypoint pt)
 	if (newmask == oldmask)
 		return;
 
-	xpos = (float)pt.x / (float)node->dimensions.x.max;
-	ypos = (float)pt.y / (float)node->dimensions.y.max;
-
 	for_each_direction (dir) {
 		dirmask = DIRECTION_MASK(dir);
 		if ((oldmask & dirmask) != (newmask & dirmask)) {
 			edgeevtype = (newmask & dirmask) ? EE_ARRIVE : EE_DEPART;
-			if (trigger_edgeevent(&node->edgehist[dir], dir, edgeevtype, xpos, ypos))
-				warn("out-of-sync edge event on %s ignored\n", node->name);
+			/*
+			 * delta is zero here because the old mousepos-based
+			 * edge detection doesn't provide speed information
+			 */
+			node_edgeevent(node, edgeevtype, dir, 0, pt);
 		}
 	}
-}
-
-static void node_edgeevent(struct node* node, edgeevent_t type, direction_t dir,
-                           int32_t delta, struct xypoint pos)
-{
-	float xpos = (float)pos.x / (float)node->dimensions.x.max;
-	float ypos = (float)pos.y / (float)node->dimensions.y.max;
-	trigger_edgeevent(&node->edgehist[dir], dir, type, xpos, ypos);
 }
 
 static void mousepos_cb(struct xypoint pt)
