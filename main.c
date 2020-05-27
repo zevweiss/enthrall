@@ -783,6 +783,7 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 {
 	struct node* to;
 	struct node* from;
+	direction_t dir;
 
 	if (!n) {
 		to = focused_node;
@@ -820,6 +821,14 @@ static int focus_node(struct node* n, keycode_t* modkeys, int via_hotkey)
 
 	last_focused_node = focused_node;
 	focused_node = to;
+
+	/*
+	 * Mild hack: reset any leftover edge-event-tracking state from
+	 * whenever the node was last focused.
+	 */
+	to->edgemask = 0;
+	for_each_direction (dir)
+		to->edgehist[dir].last_evtype = EE_DEPART;
 
 	return 1;
 }
