@@ -1154,13 +1154,17 @@ char* get_clipboard_text(void)
 			return xstrdup("");
 
 		if (ev.xselection.selection != selection_atom)
-			warn("unexpected selection in SelectionNotify event\n");
+			warn("unexpected selection (%lu) in SelectionNotify event\n",
+			     ev.xselection.selection);
 		if (ev.xselection.property != et_selection_data)
-			warn("unexpected property in SelectionNotify event\n");
+			warn("unexpected property (%lu) in SelectionNotify event\n",
+			     ev.xselection.property);
 		if (ev.xselection.requestor != xwin)
-			warn("unexpected requestor in SelectionNotify event\n");
+			warn("unexpected requestor (%lu) in SelectionNotify event\n",
+			     ev.xselection.requestor);
 		if (ev.xselection.target != XA_STRING)
-			warn("unexpected target in SelectionNotify event\n");
+			warn("unexpected target (%lu) in SelectionNotify event\n",
+			     ev.xselection.target);
 
 		XGetWindowProperty(ev.xselection.display, ev.xselection.requestor,
 		                   ev.xselection.property, 0, (1L << 24), True,
@@ -1168,7 +1172,8 @@ char* get_clipboard_text(void)
 		                   &bytes_remaining, &prop);
 
 		if (proptype != XA_STRING && proptype != utf8_string_atom)
-			warn("selection window property has unexpected type\n");
+			warn("selection window property has unexpected type (%lu)\n",
+			     proptype);
 		if (bytes_remaining)
 			warn("%lu bytes remaining of selection window property\n",
 			     bytes_remaining);
