@@ -57,10 +57,14 @@ ifeq ($(OS),Darwin)
 else
 	PLATFORM = x11
 	XSUBLIBS = x11 xtst xrandr xi
-	X11CFLAGS := $(shell pkg-config --cflags $(XSUBLIBS))
-	X11LIBS := $(shell pkg-config --libs $(XSUBLIBS))
-	LIBS += $(X11LIBS)
-	CFLAGS += $(X11CFLAGS)
+
+	EXTRACFLAGS := $(shell pkg-config --cflags $(XSUBLIBS)) \
+		$(shell pkg-config --exists libtirpc && pkg-config --cflags libtirpc && echo "-DUSE_TIRPC")
+	EXTRALIBS := $(shell pkg-config --libs $(XSUBLIBS)) \
+		$(shell pkg-config --exists libtirpc && pkg-config --libs libtirpc)
+
+	CFLAGS += $(EXTRACFLAGS)
+	LIBS += $(EXTRALIBS)
 
 	ifeq ($(OS),Linux)
 		CFLAGS += -D_GNU_SOURCE

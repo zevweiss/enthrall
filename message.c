@@ -10,14 +10,15 @@
 #include "message.h"
 
 /*
- * glibc's xdr routines use char*, BSD/OSX use void*.  Solarish appears to use
- * an old K&R-style declaration without specific types; usage at call-sites
- * (e.g. usr/src/lib/libnsl/rpc/svc_vc.c) seems to be "one of each".
+ * The older glibc xdr routines use char*; libtirpc & BSD/OSX use void*.
+ * (Solarish appears to use an old K&R-style declaration without specific
+ * types; usage at call-sites (e.g. usr/src/lib/libnsl/rpc/svc_vc.c) seems to
+ * be "one of each".)
  */
-#ifdef __GLIBC__
-typedef char* xdrrec_ptr_t;
-#else
+#if !defined(__GLIBC__) || __GLIBC_PREREQ(2, 32) || defined(USE_TIRPC)
 typedef void* xdrrec_ptr_t;
+#else
+typedef char* xdrrec_ptr_t;
 #endif
 
 /* Dummy callback for xdrrec_create(3) that just counts bytes */
