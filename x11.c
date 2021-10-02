@@ -79,7 +79,7 @@ static unsigned int xstate;
 
 static struct rectangle screen_dimensions;
 
-struct xypoint screen_center;
+static struct xypoint screen_center;
 
 /* Handler to fire when mouse pointer hits a screen edge */
 static edgeevent_handler_t* edgeevent_handler;

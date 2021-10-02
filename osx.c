@@ -42,7 +42,7 @@ static struct rectangle screen_dimensions = {
 	.y = { .min = 0, .max = 0, },
 };
 
-struct xypoint screen_center;
+static struct xypoint screen_center;
 
 static mousepos_handler_t* mousepos_handler;
 

@@ -30,11 +30,6 @@ int set_clipboard_text(const char* text);
 
 void set_display_brightness(float f);
 
-/*
- * Initialized by platform_init().
- */
-extern struct xypoint screen_center;
-
 void get_screen_dimensions(struct rectangle* d);
 
 typedef void (mousepos_handler_t)(struct xypoint pt);
