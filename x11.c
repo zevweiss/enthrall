@@ -79,7 +79,11 @@ static unsigned int xstate;
 
 static struct rectangle screen_dimensions;
 
-static struct xypoint screen_center;
+/*
+ * Point at which we position the mouse pointer when we've got it grabbed
+ * (i.e. when we're the master and a remote is active)
+ */
+static struct xypoint grabbed_restpos;
 
 /* Handler to fire when mouse pointer hits a screen edge */
 static edgeevent_handler_t* edgeevent_handler;
@@ -715,10 +719,11 @@ static void setup_crtc_barriers(XRRCrtcInfo* ci, int ncrtc, XRRCrtcInfo** crtcin
 	scan_edge(ncrtc, crtcinfos, xmin, ymax, xmax, ymax, BarrierNegativeY);
 }
 
-static void setup_pointer_barriers(void)
+static void setup_displays(void)
 {
 	int i;
 	XRRCrtcInfo** crtcinfos;
+	unsigned long pixels, maxpixels = 0;
 	XRRScreenResources* resources = XRRGetScreenResources(xdisp, xrootwin);
 
 	crtcinfos = xmalloc(resources->ncrtc * sizeof(*crtcinfos));
@@ -736,6 +741,15 @@ static void setup_pointer_barriers(void)
 			setup_crtc_barriers(crtcinfos[i], resources->ncrtc, crtcinfos);
 		else
 			debug("skipping %dx%d crtc %d\n", crtcinfos[i]->width, crtcinfos[i]->height, i);
+
+		/* Set grabbed_restpos to the center of the largest display */
+		pixels = crtcinfos[i]->width * crtcinfos[i]->height;
+		if (pixels > maxpixels) {
+			maxpixels = pixels;
+			grabbed_restpos.x = crtcinfos[i]->x + (crtcinfos[i]->width / 2);
+			grabbed_restpos.y = crtcinfos[i]->y + (crtcinfos[i]->height / 2);
+			debug("grabbed_restpos set to %d,%d\n", grabbed_restpos.x, grabbed_restpos.y);
+		}
 	}
 
 	for (i = 0; i < resources->ncrtc; i++)
@@ -804,9 +818,6 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
 	screen_dimensions.y.min = 0;
 	screen_dimensions.y.max = HeightOfScreen(XScreenOfDisplay(xdisp, XDefaultScreen(xdisp))) - 1;
 
-	screen_center.x = screen_dimensions.x.max / 2;
-	screen_center.y = screen_dimensions.y.max / 2;
-
 	xrootwin = XDefaultRootWindow(xdisp);
 
 	blackpx = BlackPixel(xdisp, XDefaultScreen(xdisp));
@@ -851,7 +862,7 @@ int platform_init(struct kvmap* params, mousepos_handler_t* mouse_handler,
 		status = xfixes_init();
 
 	if (!status)
-		setup_pointer_barriers();
+		setup_displays();
 
 	return status;
 }
@@ -1038,7 +1049,7 @@ int grab_inputs(void)
 		return status;
 	}
 
-	set_mousepos(screen_center);
+	set_mousepos(grabbed_restpos);
 
 	XSync(xdisp, False);
 
@@ -1172,16 +1183,16 @@ static void handle_keyevent(XKeyEvent* kev, pressrel_t pr)
 
 static void handle_grabbed_mousemove(XMotionEvent* mev)
 {
-	if (mev->x_root == screen_center.x
-	    && mev->y_root == screen_center.y)
+	if (mev->x_root == grabbed_restpos.x
+	    && mev->y_root == grabbed_restpos.y)
 		return;
 
-	send_moverel(focused_node->remote, mev->x_root - screen_center.x,
-	             mev->y_root - screen_center.y);
+	send_moverel(focused_node->remote, mev->x_root - grabbed_restpos.x,
+	             mev->y_root - grabbed_restpos.y);
 
-	if (abs(mev->x_root - screen_center.x) > 1
-	    || abs(mev->y_root - screen_center.y) > 1)
-		set_mousepos(screen_center);
+	if (abs(mev->x_root - grabbed_restpos.x) > 1
+	    || abs(mev->y_root - grabbed_restpos.y) > 1)
+		set_mousepos(grabbed_restpos);
 }
 
 static void handle_barrier_hit(XIBarrierEvent* ev)
