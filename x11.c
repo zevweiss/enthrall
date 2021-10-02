@@ -39,6 +39,9 @@ struct crtc_gamma {
 };
 
 static struct {
+	int opcode;
+	int errbase;
+	int evbase;
 	XRRScreenConfiguration* config;
 	XRRScreenResources* resources;
 	struct crtc_gamma* crtc_gammas;
@@ -419,10 +422,15 @@ int bind_hotkey(const char* keystr, hotkey_callback_t cb, void* arg)
 static int xrr_init(void)
 {
 	int i;
-	int evbase, errbase;
+	int evt, err;
 	int maj, min;
 
-	if (!XRRQueryExtension(xdisp, &evbase, &errbase)
+	if (!XQueryExtension(xdisp, "RANDR", &xrr.opcode, &evt, &err)) {
+		initerr("XRandR extension not found\n");
+		return -1;
+	}
+
+	if (!XRRQueryExtension(xdisp, &xrr.evbase, &xrr.errbase)
 	    || !XRRQueryVersion(xdisp, &maj, &min)) {
 		initerr("XRandR extension unavailable\n");
 		return -1;
@@ -442,6 +450,8 @@ static int xrr_init(void)
 		xrr.crtc_gammas[i].orig = XRRGetCrtcGamma(xdisp, xrr.resources->crtcs[i]);
 		xrr.crtc_gammas[i].alt = XRRAllocGamma(xrr.crtc_gammas[i].orig->size);
 	}
+
+	XRRSelectInput(xdisp, xrootwin, RRScreenChangeNotifyMask);
 
 	return 0;
 }
@@ -1354,7 +1364,13 @@ static void handle_event(XEvent* ev)
 		break;
 
 	default:
-		vinfo("unexpected XEvent type: %d\n", ev->type);
+		if (ev->type == xrr.evbase + RRScreenChangeNotify) {
+			vinfo("RRScreenChangeNotify event received, re-detecting screens\n");
+			destroy_pointer_barriers();
+			setup_displays();
+		} else {
+			vinfo("unexpected XEvent type: %d\n", ev->type);
+		}
 		break;
 	}
 }
