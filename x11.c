@@ -897,7 +897,7 @@ static int is_known_clipboard_xatom(Atom atom)
 static void handle_selection_request(const XSelectionRequestEvent* req)
 {
 	Atom property;
-	Atom supported_targets[] = { targets_atom, XA_STRING,  };
+	Atom supported_targets[] = { targets_atom, utf8_string_atom, XA_STRING,  };
 
 	/*
 	 * ICCCM sec. 2.2:
@@ -918,7 +918,7 @@ static void handle_selection_request(const XSelectionRequestEvent* req)
 		XChangeProperty(xdisp, req->requestor, property, XA_ATOM, 32,
 		                PropModeReplace, (unsigned char*)supported_targets,
 		                ARR_LEN(supported_targets));
-	} else if (req->target == XA_STRING) {
+	} else if (req->target == XA_STRING || req->target == utf8_string_atom) {
 		/* Send the requested data back to the requesting window */
 		XChangeProperty(xdisp, req->requestor, property, req->target, 8,
 		                PropModeReplace, (unsigned char*)clipboard_text,
@@ -1137,7 +1137,7 @@ char* get_clipboard_text(void)
 		return xstrdup(clipboard_text);
 
 	/* FIXME: delete et_selection_data from xwin before requestion conversion */
-	XConvertSelection(xdisp, selection_atom, XA_STRING, et_selection_data,
+	XConvertSelection(xdisp, selection_atom, utf8_string_atom, et_selection_data,
 	                  xwin, last_xevent_time);
 	XFlush(xdisp);
 
@@ -1162,7 +1162,7 @@ char* get_clipboard_text(void)
 		if (ev.xselection.requestor != xwin)
 			warn("unexpected requestor (%lu) in SelectionNotify event\n",
 			     ev.xselection.requestor);
-		if (ev.xselection.target != XA_STRING)
+		if (ev.xselection.target != XA_STRING && ev.xselection.target != utf8_string_atom)
 			warn("unexpected target (%lu) in SelectionNotify event\n",
 			     ev.xselection.target);
 
