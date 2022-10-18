@@ -75,7 +75,9 @@ Because `enthrall` does all its network communication over SSH, its
 traffic (keystrokes, mouse clicks and motion, clipboard contents)
 should be as secure as you have SSH configured to be.  `enthrall`
 checks that its config file is owned by the user running it and is not
-writable by any other user.
+writable by any other user.  It is also proactive about wiping old
+(potentially sensitive) clipboard data from memory when cleared or
+replaced with new content.
 
 ### Notes/Limitations/Known Issues
 
@@ -95,20 +97,14 @@ writable by any other user.
    somewhat incomplete; very large copy/paste operations (tens of
    megabytes) don't work, and may lead to a crash.
 
- - The network protocol is still unstable and may change in
-   backwards-incompatible ways from one commit to the next.  You
-   should thus (at least for now) always run the same version of
-   `enthrall` on all participating machines.  At some point in the
-   future the protocol should stabilize, but that point has not yet
-   arrived.
+ - The network protocol does not currently perform any version
+   negotiation, so while the protocol has been fairly stable for a
+   while at this point, misbehavior is a possibility if different
+   versions are running on different nodes.
 
 ### TODO/Planned Features
 
  - Configurable key-remapping
-
- - Daemonization
-
- - Scroll-wheel acceleration (perhaps mouse movement as well)
 
  - (Optionally) use libssh[2] instead of forking an `ssh` subprocess
 
