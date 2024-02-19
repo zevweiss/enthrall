@@ -237,7 +237,7 @@ static void fail_remote(struct remote* rmt, const char* reason)
 
 	next_reconnect_delay = tmp * RECONNECT_INTERVAL_UNIT;
 
-	rmt->reconnect_timer = schedule_call(reconnect_remote_cb, rmt,
+	rmt->reconnect_timer = schedule_call(reconnect_remote_cb, rmt, NULL,
 	                                     next_reconnect_delay);
 }
 
@@ -730,8 +730,6 @@ static void set_brightness_cb(void* arg)
 	 */
 	if (!(is_remote(args->node) && args->node->remote->state != CS_CONNECTED))
 		set_node_display_brightness(args->node, args->brightness);
-
-	xfree(args);
 }
 
 static void schedule_brightness_change(struct node* node, float f, uint64_t delay)
@@ -741,7 +739,7 @@ static void schedule_brightness_change(struct node* node, float f, uint64_t dela
 	args->node = node;
 	args->brightness = f;
 
-	schedule_call(set_brightness_cb, args, delay);
+	schedule_call(set_brightness_cb, args, xfree, delay);
 }
 
 static void transition_brightness(struct node* node, float from, float to,

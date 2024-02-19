@@ -976,7 +976,15 @@ struct timerinfo {
 	CFRunLoopTimerRef timer;
 	void (*cbfn)(void* arg);
 	void* cbarg;
+	void (*cbarg_dtor)(void*);
 };
+
+static void free_timerinfo(struct timerinfo* ti)
+{
+	if (ti->cbarg_dtor)
+		ti->cbarg_dtor(ti->cbarg);
+	xfree(ti);
+}
 
 static void timer_callback(CFRunLoopTimerRef timer, void* info)
 {
@@ -987,10 +995,10 @@ static void timer_callback(CFRunLoopTimerRef timer, void* info)
 	CFRunLoopRemoveTimer(CFRunLoopGetMain(), ti->timer, kCFRunLoopCommonModes);
 	CFRelease(ti->timer);
 
-	xfree(ti);
+	free_timerinfo(ti);
 }
 
-timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, void (*arg_dtor)(void*), uint64_t delay)
 {
 	struct timerinfo* ti;
 	CFAbsoluteTime firetime;
@@ -1008,6 +1016,7 @@ timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 	timer_ctx.info = ti;
 	ti->cbfn = fn;
 	ti->cbarg = arg;
+	ti->cbarg_dtor = arg_dtor;
 	ti->timer = CFRunLoopTimerCreate(kCFAllocatorDefault, firetime, 0, 0, 0,
 	                                 timer_callback, &timer_ctx);
 
@@ -1028,7 +1037,7 @@ int cancel_call(timer_ctx_t timer)
 	CFRunLoopRemoveTimer(loop, ti->timer, mode);
 	CFRelease(ti->timer);
 
-	xfree(ti);
+	free_timerinfo(ti);
 
 	return 1;
 }

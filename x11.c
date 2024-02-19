@@ -85,11 +85,19 @@ static mousepos_handler_t* mousepos_handler;
 struct scheduled_call {
 	void (*fn)(void* arg);
 	void* arg;
+	void (*arg_dtor)(void*);
 	uint64_t calltime;
 	struct scheduled_call* next;
 };
 
 static struct scheduled_call* scheduled_calls;
+
+static void free_scheduled_call(struct scheduled_call* sc)
+{
+	if (sc->arg_dtor)
+		sc->arg_dtor(sc->arg);
+	xfree(sc);
+}
 
 struct xhotkey {
 	KeyCode key;
@@ -457,7 +465,7 @@ static void xrr_exit(void)
 	while (scheduled_calls) {
 		sc = scheduled_calls;
 		scheduled_calls = sc->next;
-		xfree(sc);
+		free_scheduled_call(sc);
 	}
 }
 
@@ -1246,7 +1254,7 @@ void set_display_brightness(float f)
 	XFlush(xdisp);
 }
 
-timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
+timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, void (*arg_dtor)(void*), uint64_t delay)
 {
 	struct scheduled_call* call;
 	struct scheduled_call** prevnext;
@@ -1254,6 +1262,7 @@ timer_ctx_t schedule_call(void (*fn)(void* arg), void* arg, uint64_t delay)
 
 	newcall->fn = fn;
 	newcall->arg = arg;
+	newcall->arg_dtor = arg_dtor;
 	newcall->calltime = get_microtime() + delay;
 
 	for (prevnext = &scheduled_calls, call = *prevnext;
@@ -1280,7 +1289,7 @@ int cancel_call(timer_ctx_t timer)
 	     prevnext = &call->next, call = call->next) {
 		if (call == target) {
 			*prevnext = call->next;
-			xfree(call);
+			free_scheduled_call(call);
 			return 1;
 		}
 	}
@@ -1395,7 +1404,7 @@ static void run_scheduled_calls(uint64_t when)
 		call = scheduled_calls;
 		scheduled_calls = call->next;
 		call->fn(call->arg);
-		xfree(call);
+		free_scheduled_call(call);
 	}
 }
 
