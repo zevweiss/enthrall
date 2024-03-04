@@ -99,7 +99,7 @@ static void init_display(struct displayinfo* d, CGDirectDisplayID id)
 	                                    d->orig_gamma.green, d->orig_gamma.blue, &numents);
 	if (cgerr) {
 		initerr("CGGetDisplayTransferByTable() failed (%d)\n", cgerr);
-		initerr("brightness adjustment will disabled\n");
+		initerr("brightness adjustment will be disabled\n");
 		clear_gamma_table(&d->orig_gamma);
 		clear_gamma_table(&d->alt_gamma);
 	} else if (numents != d->orig_gamma.numents) {
