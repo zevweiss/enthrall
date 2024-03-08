@@ -1,3 +1,4 @@
+#include <errno.h>
 
 #include "misc.h"
 #include "msgchan.h"
@@ -133,7 +134,7 @@ static void mc_read_cb(struct fdmon_ctx* ctx, void* arg)
 	if (!status)
 		return;
 	else if (status < 0)
-		mc->cb.err(mc, mc->cb.arg);
+		mc->cb.err(mc, mc->cb.arg, errno);
 	else {
 		mc->cb.recv(mc, &msg, mc->cb.arg);
 		free_msgbody(&msg);
@@ -165,7 +166,7 @@ static void mc_write_cb(struct fdmon_ctx* ctx, void* arg)
 
 	status = send_message(mc);
 	if (status < 0)
-		mc->cb.err(mc, mc->cb.arg);
+		mc->cb.err(mc, mc->cb.arg, errno);
 	else
 		assert(status == 1);
 

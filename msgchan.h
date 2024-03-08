@@ -15,7 +15,7 @@
 struct msgchan;
 
 typedef void (*mc_recv_cb_t)(struct msgchan* chan, struct message* msg, void* arg);
-typedef void (*mc_err_cb_t)(struct msgchan* chan, void* arg);
+typedef void (*mc_err_cb_t)(struct msgchan* chan, void* arg, int err);
 
 struct msgchan {
 	struct {

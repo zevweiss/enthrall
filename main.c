@@ -429,11 +429,14 @@ static void rmt_mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 	handle_message(rmt, msg);
 }
 
-static void rmt_mc_err_cb(struct msgchan* mc, void* arg)
+static void rmt_mc_err_cb(struct msgchan* mc, void* arg, int err)
 {
 	struct remote* rmt = arg;
+	char* msg = xasprintf("msgchan error: %s", strerror(err));
 
-	fail_remote(rmt, "msgchan error");
+	fail_remote(rmt, msg);
+
+	xfree(msg);
 }
 
 static void setup_remote(struct remote* rmt)

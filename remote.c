@@ -125,9 +125,9 @@ static void mc_read_cb(struct msgchan* mc, struct message* msg, void* arg)
 	}
 }
 
-static void mc_err_cb(struct msgchan* mc, void* arg)
+static void mc_err_cb(struct msgchan* mc, void* arg, int err)
 {
-	errlog("msgchan error, remote terminating\n");
+	errlog("msgchan error, remote terminating: %s\n", strerror(err));
 	shutdown_remote();
 	exit(1);
 }
