@@ -44,6 +44,7 @@ decimal [-]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)
 "clear-clipboard"               return KW_CLEARCLIPBOARD;
 "reconnect"                     return KW_RECONNECT;
 "halt-reconnects"               return KW_HALT_RECONNECTS;
+"step-log-level"                return KW_STEP_LOGLEVEL;
 "quit"                          return KW_QUIT;
 
 "log-file"                      return KW_LOGFILE;

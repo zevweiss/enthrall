@@ -31,7 +31,8 @@ enum msgtype_t {
 	MT_GETCLIPBOARD,
 	MT_SETCLIPBOARD,
 	MT_LOGMSG,
-	MT_SETBRIGHTNESS
+	MT_SETBRIGHTNESS,
+	MT_SETLOGLEVEL
 };
 
 /* Screen position (e.g. for the mouse pointer), with 0,0 at the top left. */
@@ -175,6 +176,16 @@ struct setbrightness_body {
 	float brightness;
 };
 
+/*
+ * SETLOGLEVEL: sent by master to remotes to request a dynamic log-level
+ * change.
+ *
+ * No reply expected.
+ */
+struct setloglevel_body {
+	uint32_t loglevel;
+};
+
 union msgbody switch (msgtype_t type) {
 case MT_SETUP:
 	setup_body setup;
@@ -198,4 +209,6 @@ case MT_LOGMSG:
 	logmsg_body logmsg;
 case MT_SETBRIGHTNESS:
 	setbrightness_body setbrightness;
+case MT_SETLOGLEVEL:
+	setloglevel_body setloglevel;
 };

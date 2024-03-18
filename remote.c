@@ -67,6 +67,10 @@ static void handle_message(const struct message* msg)
 		set_display_brightness(MB(msg, setbrightness).brightness);
 		break;
 
+	case MT_SETLOGLEVEL:
+		set_loglevel(MB(msg, setloglevel).loglevel);
+		break;
+
 	default:
 		errlog("unhandled message type: %u\n", msg->body.type);
 		shutdown_remote();

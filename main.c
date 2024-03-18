@@ -89,7 +89,25 @@ static void init_logfile(void)
 /* Small hack to let remote.c set the log level... */
 void set_loglevel(unsigned int level)
 {
+	static const char* levelnames[] = {
+		[0] = "[NONE]",
+		[LL_BUG] = "BUG",
+		[LL_ERROR] = "ERROR",
+		[LL_WARN] = "WARN",
+		[LL_INFO] = "INFO",
+		[LL_VERBOSE] = "VERBOSE",
+		[LL_DEBUG] = "DEBUG",
+		[LL_DEBUG2] = "DEBUG2",
+	};
+
+	if (level >= ARR_LEN(levelnames)) {
+		bug("Attempted to set loglevel to bogus level %u\n", level);
+		level = LL_DEBUG2;
+	}
+
 	config->log.level = level;
+
+	mlog(0, "Log level set to %s\n", levelnames[level]);
 }
 
 __printf(1, 2) void initerr(const char* fmt, ...)
@@ -325,6 +343,20 @@ void send_setclipboard(struct remote* rmt, char* text)
 	msg = new_message(MT_SETCLIPBOARD);
 
 	MB(msg, setclipboard).text = text;
+
+	enqueue_message(rmt, msg);
+}
+
+void send_setloglevel(struct remote* rmt, unsigned int level)
+{
+	struct message* msg;
+
+	if (!rmt)
+		return;
+
+	msg = new_message(MT_SETLOGLEVEL);
+
+	MB(msg, setloglevel).loglevel = level;
 
 	enqueue_message(rmt, msg);
 }
@@ -994,6 +1026,7 @@ static int halt_reconnects(void)
 
 static void action_cb(hotkey_context_t ctx, void* arg)
 {
+	int tmp;
 	struct remote* rmt;
 	struct action* a = arg;
 	keycode_t* modkeys = get_hotkey_modifiers(ctx);
@@ -1039,6 +1072,17 @@ static void action_cb(hotkey_context_t ctx, void* arg)
 			if (rmt->state == CS_CONNECTED)
 				send_setclipboard(rmt, xstrdup(""));
 		}
+		break;
+
+	case AT_STEP_LOGLEVEL:
+		tmp = config->log.level + a->loglevel_delta;
+		if (tmp < 0)
+			tmp = 0;
+		else if (tmp > LL_DEBUG2)
+			tmp = LL_DEBUG2;
+		set_loglevel(tmp);
+		for_each_remote (rmt)
+			send_setloglevel(rmt, tmp);
 		break;
 
 	default:

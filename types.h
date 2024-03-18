@@ -188,9 +188,11 @@ struct action {
 		AT_RECONNECT,
 		AT_HALT_RECONNECTS,
 		AT_QUIT,
+		AT_STEP_LOGLEVEL,
 	} type;
 	union {
 		struct focus_target target;
+		int loglevel_delta;
 	};
 };
 
