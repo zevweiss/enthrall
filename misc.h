@@ -16,6 +16,10 @@
 #define __printf(a, b)
 #endif
 
+#ifndef __GLIBC_PREREQ
+#define __GLIBC_PREREQ(...) 0
+#endif
+
 #define ARR_LEN(a) (sizeof(a) / sizeof(a[0]))
 
 #define LOOKUP(key, table) (assert(key < ARR_LEN(table)), \
