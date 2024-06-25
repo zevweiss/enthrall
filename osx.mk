@@ -31,3 +31,14 @@ FMWKDIR = $(SDKDIR)/System/Library/Frameworks
 FRAMEWORKS = CoreFoundation ApplicationServices Carbon IOKit
 CFLAGS += -iframework$(FMWKDIR) -iframework$(FMWKDIR)/ApplicationServices.framework/Frameworks
 LDFLAGS += $(foreach f,$(FRAMEWORKS),-framework $f)
+
+# Some of the Carbon APIs used in osx.c are deprecated, sadly.
+osx.o: CFLAGS += -Wno-error=deprecated-declarations
+
+# rpcgen generates code with K&R-style function definitions, and only some
+# versions of clang support -Wno-deprecated-non-prototype to silence the
+# warnings about it, so just turn of -Werror for that file.  (Doing a compiler
+# version check just to figure out whether or not we can pass that one flag
+# seems like overkill, and it's generated code so warnings are hard to do
+# anything about anyway).
+proto.o: CFLAGS += -Wno-error
