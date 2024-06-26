@@ -51,6 +51,14 @@ wherever `enthrall` is installed on that host) on the relevant line of
 your `~/.ssh/authorized_keys` file to restrict that key for use only
 with `enthrall`.
 
+#### Mac OS
+
+On recent releases of Mac OS, to enable enthrall to run as a remote
+you'll need to go into the "Privacy & Security" pane of System
+Settings, select "Accessibility", and add
+`/usr/libexec/sshd-keygen-wrapper` to the list of explicitly allowed
+applications.
+
 ### Usage
 
 Start `enthrall` from the master node with a single argument: the path
