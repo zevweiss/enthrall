@@ -44,7 +44,11 @@ static char** orig_argv;
 
 static FILE* logfile;
 
-#define for_each_remote(r) for (r = config->remotes; r; r = r->next)
+/* iterate over all remotes, regardless of whether or not they're enabled */
+#define for_each_defined_remote(r) for (r = config->remotes; r; r = r->next)
+
+/* iterate over only enabled remotes */
+#define for_each_remote(r) for_each_defined_remote(r) if (r->enabled)
 
 static void focus_master(void);
 static void setup_remote(struct remote* rmt);
@@ -510,6 +514,25 @@ static void setup_remote(struct remote* rmt)
 	enqueue_message(rmt, setupmsg);
 }
 
+static struct remote* find_remote(const char* name)
+{
+	struct remote* rmt;
+
+	/* First search by alias */
+	for_each_defined_remote (rmt) {
+		if (!strcmp(name, rmt->node.name))
+			return rmt;
+	}
+
+	/* if that fails, try hostnames */
+	for_each_defined_remote (rmt) {
+		if (!strcmp(name, rmt->hostname))
+			return rmt;
+	}
+
+	return NULL;
+}
+
 static struct node* find_node(const char* name)
 {
 	struct remote* rmt;
@@ -517,19 +540,9 @@ static struct node* find_node(const char* name)
 	if (!name || !strcmp(name, config->master.name))
 		return &config->master;
 
-	/* First search by alias */
-	for_each_remote (rmt) {
-		if (!strcmp(name, rmt->node.name))
-			return &rmt->node;
-	}
+	rmt = find_remote(name);
 
-	/* if that fails, try hostnames */
-	for_each_remote (rmt) {
-		if (!strcmp(name, rmt->hostname))
-			return &rmt->node;
-	}
-
-	return NULL;
+	return rmt ? &rmt->node : NULL;
 }
 
 static void resolve_noderef(struct noderef* n)
@@ -580,6 +593,35 @@ static void apply_topology(void)
 
 	for (ln = config->topology; ln; ln = ln->next)
 		apply_link(ln);
+}
+
+struct remote_enable {
+	const char* name;
+	int enable;
+};
+
+static void set_enabled_remotes(const struct remote_enable* settings, unsigned num_settings)
+{
+	struct remote* rmt;
+
+	/*
+	 * First apply the default for any remotes that aren't explicitly
+	 * specified (disabled if -e was last, enabled if -d was last or if
+	 * neither was passed)
+	 */
+	int dflt = num_settings ? !settings[num_settings - 1].enable : 1;
+
+	for_each_defined_remote (rmt) {
+		rmt->enabled = dflt;
+	}
+
+	for (unsigned i = 0; i < num_settings; i++) {
+		rmt = find_remote(settings[i].name);
+		if (rmt)
+			rmt->enabled = settings[i].enable;
+		else
+			initdie("Error: remote '%s' not defined\n", settings[i].name);
+	}
 }
 
 static void mark_reachable(struct node* n)
@@ -1411,7 +1453,7 @@ static void setup_signal_handlers(void)
 
 static void usage(FILE* out)
 {
-	fprintf(out, "Usage: %s CONFIGFILE\n", progname);
+	fprintf(out, "Usage: %s [-e REMOTE] [-d REMOTE] CONFIGFILE\n", progname);
 }
 
 int main(int argc, char** argv)
@@ -1420,25 +1462,51 @@ int main(int argc, char** argv)
 	struct remote* rmt;
 	FILE* cfgfile;
 	struct stat st;
+	struct remote_enable* remote_enables;
+	unsigned num_remote_enables = 0;
 
 	static const struct option options[] = {
 		{ "help", no_argument, NULL, 'h', },
+		{ "enable-remote", required_argument, NULL, 'e', },
+		{ "disable-remote", required_argument, NULL, 'd', },
 		{ NULL, 0, NULL, 0, },
 	};
 
 	orig_argc = argc;
 	orig_argv = argv;
 
+	/*
+	 * argc is a convenient upper bound on the number of -e/-d flags we
+	 * might have, so let's just use that instead of reallocating on each
+	 * flag we encounter or something
+	 */
+	remote_enables = xcalloc(argc * sizeof(*remote_enables));
+
 	if (strrchr(argv[0], '/'))
 		progname = strrchr(argv[0], '/') + 1;
 	else
 		progname = argv[0];
 
-	while ((opt = getopt_long(argc, argv, "h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hd:e:", options, NULL)) != -1) {
 		switch (opt) {
 		case 'h':
 			usage(stdout);
 			exit(0);
+
+		case 'e':
+		case 'd':
+			/*
+			 * -e and -d settings are stored in a single array so we can
+			 * easily implement last-one-wins semantics -- the last -e or -d
+			 * flag also dictates whether remotes not explicitly specified
+			 * with an -e or -d flag are enabled or disabled (with -e they're
+			 * disabled by default, with -d they're enabled).
+			 */
+			remote_enables[num_remote_enables++] = (struct remote_enable) {
+				.name = optarg,
+				.enable = opt == 'e',
+			};
+			break;
 
 		default:
 			usage(stderr);
@@ -1495,6 +1563,8 @@ int main(int argc, char** argv)
 	if (!config->master.name)
 		config->master.name = xstrdup("<master>");
 	get_screen_dimensions(&config->master.dimensions);
+
+	set_enabled_remotes(remote_enables, num_remote_enables);
 
 	apply_topology();
 	check_remotes();

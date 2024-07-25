@@ -145,6 +145,9 @@ struct remote {
 
 	/* for linking into a list of remotes */
 	struct remote* next;
+
+	/* whether enabled or disabled by -e/-d flags */
+	int enabled;
 };
 
 /*
