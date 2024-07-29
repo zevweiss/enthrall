@@ -570,9 +570,6 @@ static const char* dirnames[] = {
 
 static void apply_link(struct link* ln)
 {
-	resolve_noderef(&ln->a.nr);
-	resolve_noderef(&ln->b.nr);
-
 	assert(ln->a.dir != NO_DIR);
 	if (ln->a.nr.node->neighbors[ln->a.dir])
 		initerr("Warning: %s %s neighbor already specified\n",
@@ -587,12 +584,24 @@ static void apply_link(struct link* ln)
 	}
 }
 
+static int node_enabled(struct node* n)
+{
+	struct remote* r = n->remote;
+	return !r || r->enabled;
+}
+
 static void apply_topology(void)
 {
 	struct link* ln;
 
-	for (ln = config->topology; ln; ln = ln->next)
-		apply_link(ln);
+	for (ln = config->topology; ln; ln = ln->next) {
+		resolve_noderef(&ln->a.nr);
+		resolve_noderef(&ln->b.nr);
+
+		/* ignore links to disabled remotes */
+		if (node_enabled(ln->a.nr.node) && node_enabled(ln->b.nr.node))
+			apply_link(ln);
+	}
 }
 
 struct remote_enable {
