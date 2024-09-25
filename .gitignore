@@ -1,4 +1,5 @@
 enthrall
+*.o
 .*.d
 *.yy.[ch]
 *.tab.[ch]
