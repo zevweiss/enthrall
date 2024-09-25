@@ -20,8 +20,9 @@ and runs its installed version.
 
 Both master and remote functionality should work on Linux and FreeBSD
 systems running X11 (porting to other *nixes shouldn't be terribly
-hard) as well as macOS 10.8 and 10.9 (other versions untested).  To
-compile you'll need:
+hard) as well as macOS (originally developed against 10.8 and more
+recently up to 14.7, most versions in between should probably work).
+To compile you'll need:
 
  - GNU `make` (`gmake` on some systems)
  - `flex` (2.5.35 and later known to work)
