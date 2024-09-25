@@ -20,7 +20,7 @@ and runs its installed version.
 
 Both master and remote functionality should work on Linux and FreeBSD
 systems running X11 (porting to other *nixes shouldn't be terribly
-hard) as well as Mac OS X 10.8 and 10.9 (other versions untested).  To
+hard) as well as macOS 10.8 and 10.9 (other versions untested).  To
 compile you'll need:
 
  - GNU `make` (`gmake` on some systems)
@@ -28,10 +28,10 @@ compile you'll need:
  - `bison` 2.4 or later
  - On X11 systems: XTest, XInput, and XRandR extensions, `pkg-config`
  - On systems with glibc 2.32 or later: libtirpc and rpcsvc-proto
- - On Mac OS X: Xcode developer tools
+ - On macOS: Xcode developer tools
 
-Unfortunately the version of bison provided by Apple on Mac OS X is
-2.3, which won't work.  MacPorts (and similar OSX package managers)
+Unfortunately the version of bison provided by Apple on macOS is 2.3,
+which won't work.  MacPorts (and similar macOS package managers)
 should have newer versions available that will work, however.
 
 ### Installation
@@ -51,9 +51,9 @@ wherever `enthrall` is installed on that host) on the relevant line of
 your `~/.ssh/authorized_keys` file to restrict that key for use only
 with `enthrall`.
 
-#### Mac OS
+#### macOS
 
-On recent releases of Mac OS, to enable enthrall to run as a remote
+On recent releases of macOS, to enable enthrall to run as a remote
 you'll need to go into the "Privacy & Security" pane of System
 Settings, select "Accessibility", and add
 `/usr/libexec/sshd-keygen-wrapper` to the list of explicitly allowed
@@ -89,17 +89,18 @@ replaced with new content.
 
 ### Notes/Limitations/Known Issues
 
- - When using `show-focus = dim-inactive`, inactive OS X remotes
+ - When using `show-focus = dim-inactive`, inactive macOS remotes
    (witnessed on 10.8, 10.9, and 10.12 at least) will sometimes
    spontaneously reset themselves to full brightness.  (I'm 99%
-   certain this is simply a "feature" of OSX and not an enthrall bug.)
+   certain this is simply a "feature" of macOS and not an enthrall
+   bug.)
 
- - On OSX, having iTerm2 (possibly other applications as well, though
-   that's the only one I've noticed) as the foreground application
-   prevents `enthrall` from intercepting keyboard events, breaking
-   proper operation as a master node.  As a (clumsy) workaround, you
-   can just bring a different application to the foreground before
-   switching enthrall's focus to a remote.
+ - On macOS, having iTerm2 (possibly other applications as well,
+   though that's the only one I've noticed) as the foreground
+   application prevents `enthrall` from intercepting keyboard events,
+   breaking proper operation as a master node.  As a (clumsy)
+   workaround, you can just bring a different application to the
+   foreground before switching enthrall's focus to a remote.
 
  - X11 selection (a.k.a. "clipboard", colloquially) management is
    somewhat incomplete; very large copy/paste operations (tens of
