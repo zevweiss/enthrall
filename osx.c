@@ -421,9 +421,9 @@ void set_display_brightness(float f)
 	}
 }
 
-static inline uint32_t cgfloat_to_u32(CGFloat f)
+static inline int32_t cgfloat_to_i32(CGFloat f)
 {
-	if (f > UINT32_MAX || f < 0) {
+	if (f > INT32_MAX || f < INT32_MIN) {
 		errlog("out-of-range CGFloat: %g\n", f);
 		abort();
 	}
@@ -512,8 +512,8 @@ struct xypoint get_mousepos(void)
 	struct xypoint pt;
 	CGPoint cgpt = get_mousepos_cgpoint();
 
-	pt.x = cgfloat_to_u32(cgpt.x);
-	pt.y = cgfloat_to_u32(cgpt.y);
+	pt.x = cgfloat_to_i32(cgpt.x);
+	pt.y = cgfloat_to_i32(cgpt.y);
 
 	return pt;
 }
